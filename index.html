@@ -184,6 +184,12 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 
 @media(max-width:900px){.grid-main{grid-template-columns:1fr;}.grid-half{grid-template-columns:1fr;}.stats{grid-template-columns:repeat(3,1fr);}}
 @media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr);}.main{padding:1rem;}.topbar{padding:0 1rem;}}
+
+/* COMMAND CENTER NAV */
+.cc-nav{background:var(--navy);border-bottom:1px solid rgba(255,255,255,.1);padding:0 1.5rem;display:flex;align-items:center;height:40px;gap:2px;overflow-x:auto;}
+.cc-nav-link{font-size:12px;font-weight:500;padding:5px 16px;border-radius:6px;color:rgba(255,255,255,.45);text-decoration:none;transition:all .2s;white-space:nowrap;}
+.cc-nav-link:hover{color:rgba(255,255,255,.8);background:rgba(255,255,255,.07);}
+.cc-nav-link.active{color:var(--white);background:rgba(255,255,255,.13);}
 </style>
 </head>
 <body>
@@ -196,6 +202,13 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
   </div>
 </div>
 
+
+<nav class="cc-nav">
+  <a class="cc-nav-link active" href="./index.html">Morning Brief</a>
+  <a class="cc-nav-link" href="./processes.html">Process Library</a>
+  <a class="cc-nav-link" href="./winback.html">Win-back Scanner</a>
+  <a class="cc-nav-link" href="./drafts.html">Draft Engine</a>
+</nav>
 <div class="modebar">
   <button class="mode-btn active" onclick="setMode('standard',this)">Eridion</button>
   <button class="mode-btn" onclick="setMode('fifa',this)">FIFA 2026</button>
@@ -412,11 +425,35 @@ function renderStale(items){
   const el=document.getElementById('stale-list');
   if(!items.length){el.innerHTML='<div class="empty">No stale threads.</div>';return;}
   el.innerHTML=items.map(item=>`
-    <div class="stale-item">
+    <div class="stale-item" id="stale-${esc(item.id)}">
       <div class="stale-hours">${item.hours}h<span>silent</span></div>
-      <div class="stale-info"><div class="stale-from">${esc(item.from)}</div><div class="stale-subj">${esc(item.subject)}</div></div>
-      <button class="draft-btn">Draft ↗</button>
+      <div class="stale-info">
+        <div class="stale-from">${esc(item.from)}</div>
+        <div class="stale-subj">${esc(item.subject)}</div>
+      </div>
+      <div style="display:flex;gap:5px;flex-shrink:0">
+        <button class="draft-btn">Draft ↗</button>
+        <button class="draft-btn" style="color:var(--green);border-color:var(--green)" onclick="markComplete('stale-${esc(item.id)}','${esc(item.subject)}',event)">✓ Done</button>
+      </div>
     </div>`).join('');
+}
+
+function markComplete(elId, subject, event) {
+  event.stopPropagation();
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.style.opacity = '0';
+  el.style.transition = 'opacity 0.3s';
+  setTimeout(() => {
+    el.remove();
+    // Update stale count
+    const remaining = document.querySelectorAll('[id^="stale-"]').length;
+    set('c-stale', remaining);
+    set('s-stale', remaining);
+    if (remaining === 0) {
+      document.getElementById('stale-list').innerHTML = '<div class="empty">No stale threads.</div>';
+    }
+  }, 300);
 }
 
 function renderVendors(docs){
