@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eridion — Morning Brief</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:#1B2A4A;--navy-deep:#111D33;--green:#2D6A4F;--green-light:#40916C;
+  --cream:#F8F5EF;--cream-dark:#EDE8DD;--gold:#C9A84C;--gold-light:#E8C96A;
+  --red:#C0392B;--red-soft:#FDF0EE;--amber:#D68910;--amber-soft:#FEF9EC;
+  --teal:#1A7A7A;--teal-soft:#EAF5F5;--purple:#6B4C9A;--purple-soft:#F2EDFA;
+  --text:#1B2A4A;--text-2:#4A5568;--text-3:#8A95A3;--border:#DDD6CA;--white:#FFFFFF;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);color:var(--text);min-height:100vh;font-size:14px;}
+
+/* TOPBAR */
+.topbar{background:var(--navy-deep);height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;position:sticky;top:0;z-index:100;}
+.logo{font-family:'DM Serif Display',serif;color:var(--cream);font-size:20px;letter-spacing:.03em;display:flex;align-items:center;gap:8px;}
+.logo-dot{color:var(--gold);}
+.logo-tag{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;color:rgba(255,255,255,.35);letter-spacing:.1em;text-transform:uppercase;border-left:1px solid rgba(255,255,255,.15);padding-left:10px;}
+.topbar-right{display:flex;align-items:center;gap:12px;}
+.topbar-date{font-size:12px;color:rgba(255,255,255,.4);}
+.sync-btn{background:var(--gold);color:var(--navy-deep);border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .2s;}
+.sync-btn:hover{background:var(--gold-light);}
+.sync-btn.syncing{opacity:.7;pointer-events:none;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin-icon{display:inline-block;animation:spin .8s linear infinite;}
+
+/* MODEBAR */
+.modebar{background:var(--navy);border-bottom:1px solid rgba(255,255,255,.06);padding:0 1.5rem;display:flex;align-items:center;gap:2px;height:36px;overflow-x:auto;}
+.mode-btn{font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;padding:4px 14px;border-radius:20px;border:none;cursor:pointer;background:transparent;color:rgba(255,255,255,.38);transition:all .2s;white-space:nowrap;}
+.mode-btn:hover{color:rgba(255,255,255,.7);}
+.mode-btn.active{background:var(--gold);color:var(--navy-deep);font-weight:600;}
+
+/* CONN BAR */
+.conn-bar{background:var(--white);border-bottom:1px solid var(--border);padding:6px 1.5rem;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.conn-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-3);font-weight:500;}
+.conn-dot{width:6px;height:6px;border-radius:50%;background:var(--border);transition:background .3s;}
+.conn-dot.live{background:#27AE60;}
+.conn-dot.error{background:var(--red);}
+.conn-dot.syncing{background:var(--amber);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.conn-label{color:var(--text-2);}
+
+/* MAIN */
+.main{max-width:1120px;margin:0 auto;padding:1.5rem;}
+
+/* HEADER */
+.brief-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem;gap:1rem;}
+.greeting{font-family:'DM Serif Display',serif;font-size:26px;color:var(--navy);line-height:1.2;}
+.greeting em{color:var(--green);font-style:italic;}
+.greeting-sub{font-size:13px;color:var(--text-3);margin-top:4px;}
+.last-sync{font-size:11px;color:var(--text-3);text-align:right;margin-top:4px;}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:1.25rem;}
+.stat{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden;}
+.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--border);}
+.stat.urgent::before{background:var(--red);}
+.stat.warn::before{background:var(--amber);}
+.stat.info::before{background:var(--teal);}
+.stat.good::before{background:var(--green);}
+.stat.sub::before{background:var(--purple);}
+.stat:hover{border-color:var(--navy);transform:translateY(-1px);box-shadow:0 2px 8px rgba(27,42,74,.08);}
+.stat-num{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1;margin-bottom:4px;}
+.stat-num.is-red{color:var(--red);}
+.stat-num.is-amber{color:var(--amber);}
+.stat-num.is-purple{color:var(--purple);}
+.stat-label{font-size:11px;color:var(--text-3);font-weight:500;text-transform:uppercase;letter-spacing:.05em;}
+
+/* GRID */
+.grid-main{display:grid;grid-template-columns:1fr 340px;gap:1rem;margin-bottom:1rem;}
+.grid-full{margin-bottom:1rem;}
+.grid-half{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
+
+/* CARD */
+.card{background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;animation:fadeUp .3s ease both;}
+.card:nth-child(2){animation-delay:.05s;}
+.card:nth-child(3){animation-delay:.1s;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.card-head{padding:11px 16px;border-bottom:1px solid var(--cream-dark);display:flex;align-items:center;justify-content:space-between;}
+.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-2);display:flex;align-items:center;gap:7px;}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.dot-red{background:var(--red);}.dot-amber{background:var(--amber);}.dot-green{background:var(--green);}
+.dot-teal{background:var(--teal);}.dot-navy{background:var(--navy);}.dot-purple{background:var(--purple);}.dot-gold{background:var(--gold);}
+.card-count{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--cream-dark);color:var(--text-2);}
+
+/* EMAIL ITEMS */
+.email-item{padding:11px 16px;border-bottom:1px solid var(--cream-dark);cursor:pointer;transition:background .12s;display:flex;align-items:flex-start;gap:10px;}
+.email-item:last-child{border-bottom:none;}
+.email-item:hover{background:var(--cream);}
+.email-item.open{background:#F0F4FF;}
+.avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;margin-top:1px;}
+.av-red{background:var(--red-soft);color:var(--red);}.av-amber{background:var(--amber-soft);color:var(--amber);}
+.av-navy{background:#EEF2FF;color:var(--navy);}.av-green{background:#EAF5EE;color:var(--green);}
+.av-teal{background:var(--teal-soft);color:var(--teal);}.av-purple{background:var(--purple-soft);color:var(--purple);}
+.email-body{flex:1;min-width:0;}
+.email-top{display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:2px;}
+.email-from{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.email-time{font-size:11px;color:var(--text-3);white-space:nowrap;flex-shrink:0;}
+.email-subject{font-size:13px;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.email-preview{font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.email-tags{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;}
+.tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em;}
+.tag-urgent{background:var(--red-soft);color:var(--red);}
+.tag-payment{background:#EAF5EE;color:var(--green);}
+.tag-po{background:#EEF2FF;color:var(--navy);}
+.tag-bid{background:var(--teal-soft);color:var(--teal);}
+.tag-sub-invoice{background:var(--purple-soft);color:var(--purple);}
+.tag-fhc{background:#FEF8E7;color:#8B6914;}
+.tag-sky{background:var(--teal-soft);color:var(--teal);}
+.tag-m3{background:#F5F5F5;color:#666;}
+.tag-legacy,.tag-dispute{background:#F5F5F5;color:#666;}
+.tag-casaverde{background:#EAF5EE;color:var(--green);}
+.tag-herdallas{background:var(--purple-soft);color:var(--purple);}
+
+/* EXPANDED */
+.email-expanded{display:none;padding:10px 16px 12px 58px;border-bottom:1px solid var(--cream-dark);background:#F9FAFF;}
+.email-item.open + .email-expanded{display:block;}
+.action-row{display:flex;gap:6px;flex-wrap:wrap;}
+.act-btn{font-size:12px;font-weight:500;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--text);cursor:pointer;transition:all .15s;}
+.act-btn:hover{background:var(--navy);color:var(--white);border-color:var(--navy);}
+.act-btn.primary{background:var(--navy);color:var(--white);border-color:var(--navy);}
+.act-btn.primary:hover{background:var(--green);border-color:var(--green);}
+.act-btn.approve{background:var(--green);color:var(--white);border-color:var(--green);}
+.act-btn.urgent-btn{background:var(--red);color:var(--white);border-color:var(--red);}
+
+/* STALE */
+.stale-item{padding:10px 16px;border-bottom:1px solid var(--cream-dark);display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .12s;}
+.stale-item:last-child{border-bottom:none;}
+.stale-item:hover{background:var(--cream);}
+.stale-hours{font-family:'DM Serif Display',serif;font-size:18px;color:var(--amber);min-width:42px;text-align:center;flex-shrink:0;}
+.stale-hours span{display:block;font-family:'DM Sans',sans-serif;font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-top:-2px;}
+.stale-info{flex:1;min-width:0;}
+.stale-from{font-size:13px;font-weight:600;}
+.stale-subj{font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.draft-btn{font-size:11px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--text-2);cursor:pointer;flex-shrink:0;transition:all .15s;}
+.draft-btn:hover{background:var(--navy);color:var(--white);border-color:var(--navy);}
+
+/* VENDOR ITEMS */
+.vendor-item{padding:10px 16px;border-bottom:1px solid var(--cream-dark);display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .12s;}
+.vendor-item:last-child{border-bottom:none;}
+.vendor-item:hover{background:var(--cream);}
+.vendor-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0;min-width:48px;text-align:center;}
+.badge-fhc{background:#FEF8E7;color:#8B6914;}
+.badge-sky{background:#EAF5F5;color:var(--teal);}
+.badge-m3{background:#F5F5F5;color:#666;border:1px solid #DDD;}
+.badge-eridion{background:#EEF2FF;color:var(--navy);}
+.badge-new{background:var(--amber-soft);color:var(--amber);}
+.badge-waterfall{background:#EEF5FE;color:#1A5F9E;}
+.vendor-info{flex:1;min-width:0;}
+.vendor-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.vendor-action{font-size:12px;color:var(--text-2);}
+.vendor-time{font-size:11px;color:var(--text-3);flex-shrink:0;}
+.pay-method{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;flex-shrink:0;}
+.pm-zelle{background:#F0E6FF;color:#6B21A8;}
+.pm-ach{background:#EEF2FF;color:var(--navy);}
+.m3-warning-bar{background:#FDF0EE;border-bottom:1px solid #F5C6C0;padding:7px 16px;font-size:11px;color:var(--red);font-weight:600;display:flex;align-items:center;gap:5px;}
+
+/* BUILDER ITEMS */
+.builder-item{padding:10px 16px;border-bottom:1px solid var(--cream-dark);cursor:pointer;transition:background .12s;}
+.builder-item:last-child{border-bottom:none;}
+.builder-item:hover{background:var(--cream);}
+.builder-header{display:flex;align-items:center;gap:8px;margin-bottom:3px;}
+.builder-name{font-size:13px;font-weight:600;flex:1;}
+.builder-price{font-size:13px;font-weight:600;color:var(--green);}
+.builder-subject{font-size:12px;color:var(--text-2);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.builder-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.builder-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em;}
+.bb-approve{background:var(--red-soft);color:var(--red);}
+.bb-trigger{background:#FEF8E7;color:#8B6914;}
+.bb-notify{background:var(--teal-soft);color:var(--teal);}
+.bb-confirm{background:#EEF2FF;color:var(--navy);}
+.builder-time{font-size:11px;color:var(--text-3);}
+
+/* EMPTY / LOADING */
+.empty{padding:28px 16px;text-align:center;color:var(--text-3);font-size:13px;}
+.loading{padding:28px 16px;text-align:center;}
+.spinner{width:28px;height:28px;border-radius:50%;border:2px solid var(--cream-dark);border-top-color:var(--navy);animation:spin .7s linear infinite;margin:0 auto 10px;}
+.loading-text{font-size:12px;color:var(--text-3);}
+
+@media(max-width:900px){.grid-main{grid-template-columns:1fr;}.grid-half{grid-template-columns:1fr;}.stats{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr);}.main{padding:1rem;}.topbar{padding:0 1rem;}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Eridion<span class="logo-dot">.</span><span class="logo-tag">Command Center</span></div>
+  <div class="topbar-right">
+    <div class="topbar-date" id="today-date"></div>
+    <button class="sync-btn" id="sync-btn" onclick="syncAll()"><span id="sync-icon">↻</span> Sync</button>
+  </div>
+</div>
+
+<div class="modebar">
+  <button class="mode-btn active" onclick="setMode('standard',this)">Eridion</button>
+  <button class="mode-btn" onclick="setMode('fifa',this)">FIFA 2026</button>
+  <button class="mode-btn" onclick="setMode('casaverde',this)">Casa Verde</button>
+  <button class="mode-btn" onclick="setMode('herdallas',this)">HER Dallas</button>
+</div>
+
+<div class="conn-bar">
+  <div class="conn-item"><div class="conn-dot" id="dot-outlook"></div><span class="conn-label">Outlook</span></div>
+  <div class="conn-item"><div class="conn-dot" id="dot-francisco"></div><span class="conn-label">Francisco</span></div>
+  <div class="conn-item"><div class="conn-dot" id="dot-vendors"></div><span class="conn-label">Vendors</span></div>
+  <div class="conn-item"><div class="conn-dot" id="dot-subs"></div><span class="conn-label">Sub installers</span></div>
+  <div class="conn-item" style="margin-left:auto"><span id="sync-status" style="font-size:11px;color:var(--text-3)">Not synced</span></div>
+</div>
+
+<div class="main">
+
+  <div class="brief-header">
+    <div>
+      <div class="greeting">Good <span id="time-of-day">morning</span>, <em>Erika.</em></div>
+      <div class="greeting-sub" id="brief-sub">Click Sync to load today's brief from your Outlook.</div>
+    </div>
+    <div><div class="last-sync" id="last-sync-time"></div></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat urgent" onclick="scroll2('priority-section')"><div class="stat-num is-red" id="s-priority">—</div><div class="stat-label">Act today</div></div>
+    <div class="stat warn" onclick="scroll2('stale-section')"><div class="stat-num is-amber" id="s-stale">—</div><div class="stat-label">Stale &gt;24h</div></div>
+    <div class="stat info" onclick="scroll2('vendors-section')"><div class="stat-num" id="s-vendors">—</div><div class="stat-label">Vendor docs</div></div>
+    <div class="stat sub" onclick="scroll2('subs-section')"><div class="stat-num is-purple" id="s-subs">—</div><div class="stat-label">Sub invoices</div></div>
+    <div class="stat good" onclick="scroll2('inbox-section')"><div class="stat-num" id="s-inbox">—</div><div class="stat-label">New emails</div></div>
+  </div>
+
+  <div class="grid-main">
+    <div class="card" id="priority-section">
+      <div class="card-head"><div class="card-title"><div class="dot dot-red"></div>Priority — act today</div><div class="card-count" id="c-priority">0</div></div>
+      <div id="priority-list"><div class="loading"><div class="spinner"></div><div class="loading-text">Waiting for sync...</div></div></div>
+    </div>
+    <div class="card" id="stale-section">
+      <div class="card-head"><div class="card-title"><div class="dot dot-amber"></div>No reply &gt;24h</div><div class="card-count" id="c-stale">0</div></div>
+      <div id="stale-list"><div class="loading"><div class="spinner"></div><div class="loading-text">Waiting...</div></div></div>
+    </div>
+  </div>
+
+  <div class="grid-half">
+    <div class="card" id="vendors-section">
+      <div class="card-head"><div class="card-title"><div class="dot dot-gold"></div>Vendor documents</div><div class="card-count" id="c-vendors">0</div></div>
+      <div id="vendors-list"><div class="loading"><div class="spinner"></div><div class="loading-text">Waiting...</div></div></div>
+    </div>
+    <div class="card" id="subs-section">
+      <div class="card-head"><div class="card-title"><div class="dot dot-purple"></div>Sub installer invoices</div><div class="card-count" id="c-subs">0</div></div>
+      <div id="subs-list"><div class="loading"><div class="spinner"></div><div class="loading-text">Waiting...</div></div></div>
+    </div>
+  </div>
+
+  <div class="grid-full">
+    <div class="card" id="builders-section">
+      <div class="card-head"><div class="card-title"><div class="dot dot-teal"></div>Builder POs &amp; notifications</div><div class="card-count" id="c-builders">0</div></div>
+      <div id="builders-list"><div class="loading"><div class="spinner"></div><div class="loading-text">Waiting...</div></div></div>
+    </div>
+  </div>
+
+  <div class="grid-full">
+    <div class="card" id="inbox-section">
+      <div class="card-head"><div class="card-title"><div class="dot dot-navy"></div>All new emails</div><div class="card-count" id="c-inbox">0</div></div>
+      <div id="inbox-list"><div class="loading"><div class="spinner"></div><div class="loading-text">Waiting...</div></div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const WORKER='https://frosty-base-f01e.erikagonzalez103.workers.dev';
+let mode='standard',lastData=null;
+
+// Date/time
+const now=new Date();
+const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+document.getElementById('today-date').textContent=DAYS[now.getDay()]+', '+MONTHS[now.getMonth()]+' '+now.getDate();
+const hr=now.getHours();
+document.getElementById('time-of-day').textContent=hr<12?'morning':hr<17?'afternoon':'evening';
+
+function scroll2(id){document.getElementById(id)?.scrollIntoView({behavior:'smooth'});}
+function set(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function initials(n){return (n||'?').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase();}
+
+function setMode(m,btn){
+  mode=m;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  localStorage.setItem('eridion_mode',m);
+  if(lastData)render(lastData);
+}
+
+async function syncAll(){
+  const btn=document.getElementById('sync-btn');
+  const icon=document.getElementById('sync-icon');
+  btn.classList.add('syncing');
+  icon.innerHTML='<span class="spin-icon">↻</span>';
+  setConn('syncing');
+  document.getElementById('brief-sub').textContent='Syncing with your Outlook...';
+  try{
+    const res=await fetch(`${WORKER}/brief`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:'erika',mode})});
+    if(!res.ok)throw new Error(res.status);
+    const data=await res.json();
+    lastData=data;
+    render(data);
+    setConn('live');
+    document.getElementById('last-sync-time').textContent='Synced '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    document.getElementById('sync-status').textContent='Live';
+  }catch(e){
+    console.error(e);
+    document.getElementById('brief-sub').textContent='Could not reach Francisco — check Worker. Retrying...';
+    setConn('error');
+    document.getElementById('sync-status').textContent='Error';
+  }
+  btn.classList.remove('syncing');
+  icon.textContent='↻';
+}
+
+function setConn(s){
+  ['outlook','francisco','vendors','subs'].forEach((id,i)=>{
+    setTimeout(()=>{
+      const d=document.getElementById('dot-'+id);
+      d.className='conn-dot '+(s==='live'?'live':s==='syncing'?'syncing':'error');
+    },i*100);
+  });
+}
+
+function render(data){
+  const priority=data.priority||[];
+  const stale=data.stale||[];
+  const vendorDocs=data.vendorDocs||[];
+  const subInvoices=(data.subEmails||{}).invoices||[];
+  const inbox=data.inbox||[];
+
+  const builderDocs=vendorDocs.filter(d=>isBuilder(d));
+  const vendorOnly=vendorDocs.filter(d=>!isBuilder(d));
+
+  set('s-priority',priority.length);
+  set('s-stale',stale.length);
+  set('s-vendors',vendorOnly.length);
+  set('s-subs',subInvoices.length);
+  set('s-inbox',inbox.length);
+  set('c-priority',priority.length);
+  set('c-stale',stale.length);
+  set('c-vendors',vendorOnly.length);
+  set('c-subs',subInvoices.length);
+  set('c-inbox',inbox.length);
+  set('c-builders',builderDocs.length);
+
+  const total=priority.length+stale.length;
+  document.getElementById('brief-sub').textContent=total>0?`${total} item${total!==1?'s':''} need your attention today.`:"You're all caught up. Great start to the day.";
+
+  renderPriority(priority);
+  renderStale(stale);
+  renderVendors(vendorOnly);
+  renderSubs(subInvoices);
+  renderBuilders(builderDocs);
+  renderInbox(inbox);
+}
+
+function isBuilder(doc){
+  const vd=doc.vendorDoc||{};
+  const fe=(doc.fromEmail||'').toLowerCase();
+  const subj=(doc.subject||'').toLowerCase();
+  return vd.type==='ERIDION_PO'||fe.includes('buildertrend')||fe.includes('hyphensolutions')||fe.includes('drhorton')||subj.includes('buildpro')||subj.includes('vendor notification')||(subj.includes('purchase order')&&!fe.includes('fhc-usa')&&!fe.includes('skybm')&&!fe.includes('waterfall'));
+}
+
+function avClass(type){
+  return {urgent:'av-red',payment:'av-amber',po:'av-navy',bid:'av-teal',inquiry:'av-teal',change_order:'av-red',new_client:'av-green'}[type]||'av-navy';
+}
+
+function tagLabel(t){
+  return {'sub-invoice':'Sub invoice','new_client':'New client','change_order':'Change order','casaverde':'Casa Verde','herdallas':'HER Dallas'}[t]||(t||'').toUpperCase();
+}
+
+function renderPriority(items){
+  const el=document.getElementById('priority-list');
+  if(!items.length){el.innerHTML='<div class="empty">No priority items — clear board!</div>';return;}
+  el.innerHTML=items.map((item,i)=>{
+    const tags=(item.tags||[]).map(t=>`<span class="tag tag-${t.replace(/[^a-z0-9-]/g,'')}">${esc(tagLabel(t))}</span>`).join('');
+    const actions=buildActions(item);
+    return `<div class="email-item" id="p${i}" onclick="toggleItem('p${i}')">
+      <div class="avatar ${avClass(item.type)}">${initials(item.from)}</div>
+      <div class="email-body">
+        <div class="email-top"><div class="email-from">${esc(item.from)}</div><div class="email-time">${esc(item.time)}</div></div>
+        <div class="email-subject">${esc(item.subject)}</div>
+        <div class="email-preview">${esc(item.preview)}</div>
+        <div class="email-tags">${tags}</div>
+      </div>
+    </div>
+    <div class="email-expanded" id="exp-p${i}"><div class="action-row">${actions}</div></div>`;
+  }).join('');
+}
+
+function buildActions(item){
+  const btns=[];
+  const tags=item.tags||[];
+  const type=item.type||'';
+  if(tags.includes('approve'))btns.push('<button class="act-btn approve">Approve in BuilderTrend</button>');
+  if(type==='payment'||tags.includes('payment'))btns.push('<button class="act-btn primary">Mark paid — order tracker</button>');
+  if(type==='po'||tags.includes('po'))btns.push('<button class="act-btn primary">Confirm — order tracker</button>');
+  if(tags.includes('m3')||tags.includes('legacy'))btns.push('<button class="act-btn urgent-btn">Review M3 statement</button>');
+  if(type==='bid'||type==='inquiry')btns.push('<button class="act-btn primary">Create Monday job</button>');
+  btns.push('<button class="act-btn">Draft reply</button>');
+  btns.push('<button class="act-btn">Snooze</button>');
+  return btns.join('');
+}
+
+function renderStale(items){
+  const el=document.getElementById('stale-list');
+  if(!items.length){el.innerHTML='<div class="empty">No stale threads.</div>';return;}
+  el.innerHTML=items.map(item=>`
+    <div class="stale-item">
+      <div class="stale-hours">${item.hours}h<span>silent</span></div>
+      <div class="stale-info"><div class="stale-from">${esc(item.from)}</div><div class="stale-subj">${esc(item.subject)}</div></div>
+      <button class="draft-btn">Draft ↗</button>
+    </div>`).join('');
+}
+
+function renderVendors(docs){
+  const el=document.getElementById('vendors-list');
+  if(!docs.length){el.innerHTML='<div class="empty">No vendor documents.</div>';return;}
+  const m3First=[...docs.filter(d=>(d.vendorDoc||{}).vendorShort==='M3'),...docs.filter(d=>(d.vendorDoc||{}).vendorShort!=='M3')];
+  el.innerHTML=m3First.map(doc=>{
+    const vd=doc.vendorDoc||{};
+    const isM3=vd.vendorShort==='M3';
+    const badge={FHC:'badge-fhc',Sky:'badge-sky',M3:'badge-m3',ERIDION:'badge-eridion',WATERFALL:'badge-waterfall'}[vd.vendorShort]||'badge-new';
+    const action={payment_workflow:'Enter in order tracker — log due date',legacy_review:'Review only — do not auto-pay',statement_review:'Review open invoices',status_update:'Update order status',verify_accuracy:'Verify accuracy',manual_review:'Review and respond'}[vd.treatment]||'Review';
+    return `${isM3?'<div class="m3-warning-bar">⚠ M3 Glass — legacy dispute account. Review only.</div>':''}
+      <div class="vendor-item">
+        <div class="vendor-badge ${badge}">${esc(vd.vendorShort||'NEW')}</div>
+        <div class="vendor-info"><div class="vendor-name">${esc(doc.subject)}</div><div class="vendor-action">${action}</div></div>
+        <div class="vendor-time">${esc(doc.time)}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderSubs(invoices){
+  const el=document.getElementById('subs-list');
+  if(!invoices.length){el.innerHTML='<div class="empty">No sub installer invoices.</div>';return;}
+  el.innerHTML=invoices.map(inv=>{
+    const sd=inv.subDoc||{};
+    const isReminder=(inv.subject||'').toLowerCase().includes('reminder');
+    const pmClass=sd.paymentMethod==='Zelle'?'pm-zelle':'pm-ach';
+    return `<div class="vendor-item">
+      <div class="vendor-badge" style="${isReminder?'background:var(--red-soft);color:var(--red)':'background:var(--purple-soft);color:var(--purple)'}">${esc(sd.market||'SUB')}</div>
+      <div class="vendor-info">
+        <div class="vendor-name">${esc(sd.sub||inv.from)}</div>
+        <div class="vendor-action">${isReminder?'<strong>OVERDUE</strong> — ':''}Pay via ${esc(sd.paymentMethod)} · notify Dion</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        <span class="pay-method ${pmClass}">${esc(sd.paymentMethod)}</span>
+        <span class="vendor-time">${esc(inv.time)}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderBuilders(docs){
+  const el=document.getElementById('builders-list');
+  if(!docs.length){el.innerHTML='<div class="empty">No builder POs or notifications today.</div>';return;}
+  el.innerHTML=docs.map(doc=>{
+    const vd=doc.vendorDoc||{};
+    const fe=(doc.fromEmail||'').toLowerCase();
+    let builder='',badge='';
+    if(fe.includes('buildertrend')){builder='Hines Homes';badge='<span class="builder-badge bb-approve">Approve / Decline required</span>';}
+    else if(fe.includes('hyphensolutions')){builder='Grand Homes';badge='<span class="builder-badge bb-trigger">Job trigger — create Monday item</span>';}
+    else if(fe.includes('drhorton')){builder='D.R. Horton';badge='<span class="builder-badge bb-notify">Confirm in portal</span>';}
+    else if(vd.type==='ERIDION_PO'){builder=`PO ${esc(vd.poNumber)} — sent by ${esc(vd.sentBy||'Dion')}`;badge='<span class="builder-badge bb-confirm">Confirm in order tracker</span>';}
+    else{builder=esc(doc.from);badge='<span class="builder-badge bb-trigger">Review PO</span>';}
+    return `<div class="builder-item">
+      <div class="builder-header"><div class="builder-name">${builder}</div></div>
+      <div class="builder-subject">${esc(doc.subject)}</div>
+      <div class="builder-meta">${badge}<span class="builder-time">${esc(doc.time)}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function renderInbox(items){
+  const el=document.getElementById('inbox-list');
+  if(!items.length){el.innerHTML='<div class="empty">Inbox is clear.</div>';return;}
+  el.innerHTML=items.map((item,i)=>`
+    <div class="email-item" id="ix${i}" onclick="toggleItem('ix${i}')">
+      <div class="avatar av-navy">${initials(item.from)}</div>
+      <div class="email-body">
+        <div class="email-top"><div class="email-from">${esc(item.from)}</div><div class="email-time">${esc(item.time)}</div></div>
+        <div class="email-subject">${esc(item.subject)}</div>
+        <div class="email-preview">${esc(item.preview)}</div>
+      </div>
+    </div>
+    <div class="email-expanded" id="exp-ix${i}">
+      <div class="action-row"><button class="act-btn primary">Draft reply</button><button class="act-btn">File</button><button class="act-btn">Snooze</button></div>
+    </div>`).join('');
+}
+
+function toggleItem(id){
+  const item=document.getElementById(id);
+  const exp=document.getElementById('exp-'+id);
+  if(!item||!exp)return;
+  const wasOpen=item.classList.contains('open');
+  document.querySelectorAll('.email-item.open').forEach(e=>e.classList.remove('open'));
+  if(!wasOpen)item.classList.add('open');
+}
+
+// Init
+const saved=localStorage.getItem('eridion_mode');
+if(saved){const b=document.querySelector(`[onclick*="'${saved}'"]`);if(b)setMode(saved,b);}
+syncAll();
+</script>
+</body>
+</html>
