@@ -248,6 +248,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 .ai-ach { background: var(--amber-soft); color: var(--amber); }
 .ai-sub { background: var(--purple-soft); color: var(--purple); }
 .ai-po { background: var(--red-soft); color: var(--red); }
+.ai-teal { background: var(--teal-soft); color: var(--teal); }
 .action-body { flex: 1; min-width: 0; }
 .action-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
 .action-detail { font-size: 12px; color: var(--text-2); margin-bottom: 3px; }
@@ -498,6 +499,8 @@ function renderActions(actions) {
     builder_po: { icon: '📬', cls: 'ai-po' },
     job_created: { icon: '🏗️', cls: 'ai-monday' },
     dion_accountability: { icon: '⚠️', cls: 'ai-po' },
+    winback_flag: { icon: '👋', cls: 'ai-teal' },
+    winback_escalate: { icon: '🔄', cls: 'ai-po' },
   };
 
   list.innerHTML = actions.map(a => {
@@ -507,9 +510,11 @@ function renderActions(actions) {
       <div class="action-item" id="act-${esc(a.id)}">
         <div class="action-icon ${ic.cls}">${ic.icon}</div>
         <div class="action-body">
-          <div class="action-title">${esc(a.title)}${a.urgent ? ' 🔴' : ''}${a.forDion ? ' <span style="font-size:10px;background:#EEF2FF;color:var(--navy);padding:1px 6px;border-radius:10px;font-weight:600">DION</span>' : ''}</div>
+          <div class="action-title">${esc(a.title)}${a.urgent ? ' 🔴' : ''}${a.forDion ? ' <span style="font-size:10px;background:#EEF2FF;color:var(--navy);padding:1px 6px;border-radius:10px;font-weight:600">DION</span>' : ''}${a.winbackStage === 'crm_escalate' ? ' <span style="font-size:10px;background:var(--red-soft);color:var(--red);padding:1px 6px;border-radius:10px;font-weight:600">CRM</span>' : ''}</div>
           <div class="action-detail">${esc(a.detail || '')}</div>
           ${a.followUp ? `<div class="action-followup">→ ${esc(a.followUp)}</div>` : ''}
+          ${a.winbackStage === 'flag' ? `<button onclick="draftCheckin('${esc(a.winbackContact)}','${esc(a.id)}',event)" style="margin-top:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--teal);background:var(--teal-soft);color:var(--teal);cursor:pointer">✍ Draft check-in</button>` : ''}
+          ${a.winbackStage === 'crm_escalate' ? `<button onclick="window.open('https://erikagonzalez103-hash.github.io/crm/','_blank')" style="margin-top:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--red);background:var(--red-soft);color:var(--red);cursor:pointer">→ Open CRM</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
           <div class="action-time">${time}</div>
@@ -572,6 +577,51 @@ async function doSnooze(actionId, days, event) {
 document.addEventListener('click', () => {
   document.querySelectorAll('[id^="snooze-"]').forEach(e => e.style.display = 'none');
 });
+
+async function draftCheckin(contactName, actionId, event) {
+  event.stopPropagation();
+  // Use Claude to draft a warm check-in via the /api proxy
+  const btn = event.target;
+  btn.textContent = 'Drafting...';
+  btn.disabled = true;
+  
+  try {
+    const res = await fetch(`${WORKER_URL}/api`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: `Write a short, casual, friendly check-in email from Erika at Eridion Glass to ${contactName}. We have worked with them recently and just haven't heard from them in a while. Keep it simple and human — like a text from a colleague. Example: "Hi [name], just checking in! We haven't heard from you in a while and wanted to see if you have any new projects coming up. Would love to work together again soon!" 3-4 sentences max. Subject line then body. Start with "Hi [first name]," — casual, no formality. Do NOT describe Eridion Glass services — they already know us.`
+        }]
+      })
+    });
+    const data = await res.json();
+    const draft = data.content?.[0]?.text || 'Could not generate draft';
+    
+    // Show draft in a modal-style overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:1rem';
+    overlay.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:20px;max-width:500px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.2)">
+        <div style="font-size:14px;font-weight:600;color:var(--navy);margin-bottom:10px">✍ Check-in draft for ${contactName}</div>
+        <div style="font-size:13px;color:var(--text-2);line-height:1.6;white-space:pre-wrap;background:var(--cream);padding:12px;border-radius:8px;margin-bottom:12px">${draft}</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="navigator.clipboard.writeText(${JSON.stringify(draft)});this.textContent='Copied!'" style="padding:7px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">Copy</button>
+          <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:7px 14px;border-radius:6px;border:none;background:var(--navy);color:white;cursor:pointer;font-size:12px">Close</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if(e.target === overlay) overlay.remove(); });
+  } catch(e) {
+    alert('Could not generate draft: ' + e.message);
+  }
+  
+  btn.textContent = '✍ Draft check-in';
+  btn.disabled = false;
+}
 
 async function dismissAll() {
   try {
@@ -656,11 +706,27 @@ function buildActions(item){
   const btns=[];
   const tags=item.tags||[];
   const type=item.type||'';
+  const isInvoiceSent = tags.includes('invoice-sent') || tags.includes('invoice_sent');
+  
   if(tags.includes('approve'))btns.push('<button class="act-btn approve">Approve in BuilderTrend</button>');
-  if(type==='payment'||tags.includes('payment'))btns.push('<button class="act-btn primary">Mark paid — order tracker</button>');
+  
+  // Payment button — only for INCOMING payments (vendor invoices, ACH, subs)
+  // NOT for outgoing invoices we sent to builders (those are in Smart Glazier/Xero)
+  if(!isInvoiceSent && (type==='payment'||tags.includes('payment')) && !tags.includes('ach'))
+    btns.push('<button class="act-btn primary">Mark paid — order tracker</button>');
+  
+  // ACH confirmation — log to ledger, not order tracker
+  if(tags.includes('ach'))
+    btns.push('<button class="act-btn primary">Log to Profit First Ledger</button>');
+  
+  // Invoice sent — update Monday status
+  if(isInvoiceSent)
+    btns.push('<button class="act-btn primary">Update Monday → Invoice sent</button>');
+  
   if(type==='po'||tags.includes('po'))btns.push('<button class="act-btn primary">Confirm — order tracker</button>');
   if(tags.includes('m3')||tags.includes('legacy'))btns.push('<button class="act-btn urgent-btn">Review M3 statement</button>');
   if(type==='bid'||type==='inquiry')btns.push('<button class="act-btn primary">Create Monday job</button>');
+  if(tags.includes('opex'))btns.push('<button class="act-btn primary">Log to OPEX — Ledger</button>');
   btns.push('<button class="act-btn">Draft reply</button>');
   btns.push('<button class="act-btn">Snooze</button>');
   return btns.join('');
