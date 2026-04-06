@@ -470,27 +470,14 @@ let editingId = null;
 let stepCount = 2;
 
 // ── INIT ─────────────────────────────────────────────────────────────
-const LIBRARY_VERSION = '1.2'; // bump this to force reset
+const LIBRARY_VERSION = '1.3';
 
 function init() {
-  // Version check — if version mismatch, clear stale localStorage and reload seeds
-  const savedVersion = localStorage.getItem('eridion_processes_version');
-  if (savedVersion !== LIBRARY_VERSION) {
-    localStorage.removeItem('eridion_processes');
-    localStorage.setItem('eridion_processes_version', LIBRARY_VERSION);
-  }
-
-  const saved = localStorage.getItem('eridion_processes');
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      processes = parsed.length > 0 ? parsed : [...SEED_PROCESSES];
-    } catch(e) {
-      processes = [...SEED_PROCESSES];
-    }
-  } else {
-    processes = [...SEED_PROCESSES];
-  }
+  // Clear any stale cached data and always start fresh from seeds
+  // User additions are saved on top of seeds via saveToStorage()
+  localStorage.removeItem('eridion_processes');
+  localStorage.setItem('eridion_processes_version', LIBRARY_VERSION);
+  processes = [...SEED_PROCESSES];
   saveToStorage();
   renderGrid();
 }
