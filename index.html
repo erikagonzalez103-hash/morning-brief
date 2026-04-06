@@ -190,6 +190,44 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 .cc-nav-link{font-size:12px;font-weight:500;padding:5px 16px;border-radius:6px;color:rgba(255,255,255,.45);text-decoration:none;transition:all .2s;white-space:nowrap;}
 .cc-nav-link:hover{color:rgba(255,255,255,.8);background:rgba(255,255,255,.07);}
 .cc-nav-link.active{color:var(--white);background:rgba(255,255,255,.13);}
+
+/* FRIDAY INVOICE BANNER */
+.friday-banner{
+  margin-bottom:1.25rem;
+  border-radius:10px;
+  padding:14px 18px;
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  animation:fadeUp .3s ease both;
+}
+.friday-banner.warning{
+  background:var(--amber-soft);
+  border:1px solid #F0C050;
+}
+.friday-banner.urgent{
+  background:var(--red-soft);
+  border:1px solid #E8A090;
+}
+.friday-icon{font-size:20px;flex-shrink:0;margin-top:1px;}
+.friday-content{flex:1;}
+.friday-title{
+  font-size:14px;
+  font-weight:600;
+  margin-bottom:4px;
+}
+.friday-banner.warning .friday-title{color:var(--amber);}
+.friday-banner.urgent .friday-title{color:var(--red);}
+.friday-jobs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.friday-job-tag{
+  font-size:11px;
+  font-weight:500;
+  padding:3px 10px;
+  border-radius:20px;
+  background:rgba(255,255,255,.7);
+  color:var(--text);
+  border:1px solid rgba(0,0,0,.08);
+}
 </style>
 </head>
 <body>
@@ -234,6 +272,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
     <div><div class="last-sync" id="last-sync-time"></div></div>
   </div>
 
+  <div id="friday-banner" style="display:none"></div>
   <div class="stats">
     <div class="stat urgent" onclick="scroll2('priority-section')"><div class="stat-num is-red" id="s-priority">—</div><div class="stat-label">Act today</div></div>
     <div class="stat warn" onclick="scroll2('stale-section')"><div class="stat-num is-amber" id="s-stale">—</div><div class="stat-label">Stale &gt;24h</div></div>
@@ -340,6 +379,34 @@ function setConn(s){
   });
 }
 
+function renderFridayBanner(banner) {
+  const el = document.getElementById('friday-banner');
+  if (!el) return;
+
+  if (!banner || !banner.show || banner.count === 0) {
+    el.style.display = 'none';
+    return;
+  }
+
+  const isUrgent = banner.urgent;
+  const cls = isUrgent ? 'urgent' : 'warning';
+  const icon = isUrgent ? '🔴' : '⚠️';
+  const jobTags = (banner.jobs || []).map(j =>
+    `<span class="friday-job-tag">${esc(j.name)}${j.builder ? ' · ' + esc(j.builder) : ''}</span>`
+  ).join('');
+
+  el.innerHTML = `
+    <div class="friday-banner ${cls}">
+      <div class="friday-icon">${icon}</div>
+      <div class="friday-content">
+        <div class="friday-title">${esc(banner.message)} — ${banner.count} job${banner.count !== 1 ? 's' : ''} need${banner.count === 1 ? 's' : ''} invoicing</div>
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">All invoices must be sent before noon Friday. Don't wait on BuildPro emails.</div>
+        <div class="friday-jobs">${jobTags}</div>
+      </div>
+    </div>`;
+  el.style.display = 'block';
+}
+
 function render(data){
   const priority=data.priority||[];
   const stale=data.stale||[];
@@ -365,6 +432,7 @@ function render(data){
   const total=priority.length+stale.length;
   document.getElementById('brief-sub').textContent=total>0?`${total} item${total!==1?'s':''} need your attention today.`:"You're all caught up. Great start to the day.";
 
+  renderFridayBanner(data.fridayBanner);
   renderPriority(priority);
   renderStale(stale);
   renderVendors(vendorOnly);
