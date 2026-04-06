@@ -228,6 +228,50 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
   color:var(--text);
   border:1px solid rgba(0,0,0,.08);
 }
+
+/* FRANCISCO ACTIONS SECTION */
+.actions-section { margin-bottom: 1rem; }
+.action-item {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--cream-dark);
+  display: flex; align-items: flex-start; gap: 10px;
+  animation: fadeUp .2s ease both;
+}
+.action-item:last-child { border-bottom: none; }
+.action-icon {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; flex-shrink: 0; margin-top: 1px;
+}
+.ai-monday { background: #EEF2FF; color: var(--navy); }
+.ai-invoice { background: #EAF5EE; color: var(--green); }
+.ai-ach { background: var(--amber-soft); color: var(--amber); }
+.ai-sub { background: var(--purple-soft); color: var(--purple); }
+.ai-po { background: var(--red-soft); color: var(--red); }
+.action-body { flex: 1; min-width: 0; }
+.action-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.action-detail { font-size: 12px; color: var(--text-2); margin-bottom: 3px; }
+.action-followup {
+  font-size: 11px; font-weight: 600; color: var(--teal);
+  display: flex; align-items: center; gap: 4px;
+}
+.action-time { font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+.action-dismiss {
+  font-size: 11px; font-weight: 600;
+  padding: 3px 10px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--white);
+  color: var(--text-3); cursor: pointer; flex-shrink: 0;
+  transition: all .15s; margin-top: 2px;
+}
+.action-dismiss:hover { background: var(--green); color: var(--white); border-color: var(--green); }
+.dismiss-all-btn {
+  font-size: 11px; font-weight: 600;
+  padding: 3px 12px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--white);
+  color: var(--text-3); cursor: pointer;
+  transition: all .15s;
+}
+.dismiss-all-btn:hover { background: var(--navy); color: var(--white); border-color: var(--navy); }
 </style>
 </head>
 <body>
@@ -279,6 +323,19 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
     <div class="stat info" onclick="scroll2('vendors-section')"><div class="stat-num" id="s-vendors">—</div><div class="stat-label">Vendor docs</div></div>
     <div class="stat sub" onclick="scroll2('subs-section')"><div class="stat-num is-purple" id="s-subs">—</div><div class="stat-label">Sub invoices</div></div>
     <div class="stat good" onclick="scroll2('inbox-section')"><div class="stat-num" id="s-inbox">—</div><div class="stat-label">New emails</div></div>
+  </div>
+
+  <div class="grid-full actions-section" id="actions-section" style="display:none">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title"><div class="dot" style="background:var(--teal)"></div>Francisco acted — review &amp; dismiss</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="card-count" id="c-actions">0</div>
+          <button class="dismiss-all-btn" onclick="dismissAll()">Dismiss all</button>
+        </div>
+      </div>
+      <div id="actions-list"></div>
+    </div>
   </div>
 
   <div class="grid-main">
@@ -358,6 +415,7 @@ async function syncAll(){
     lastData=data;
     render(data);
     setConn('live');
+    loadActions();
     document.getElementById('last-sync-time').textContent='Synced '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     document.getElementById('sync-status').textContent='Live';
   }catch(e){
@@ -405,6 +463,83 @@ function renderFridayBanner(banner) {
       </div>
     </div>`;
   el.style.display = 'block';
+}
+
+const WORKER_URL = 'https://frosty-base-f01e.erikagonzalez103.workers.dev';
+
+async function loadActions() {
+  try {
+    const res = await fetch(`${WORKER_URL}/actions`);
+    const data = await res.json();
+    renderActions(data.pending || []);
+  } catch(e) {
+    console.error('Could not load actions:', e);
+  }
+}
+
+function renderActions(actions) {
+  const section = document.getElementById('actions-section');
+  const list = document.getElementById('actions-list');
+  const count = document.getElementById('c-actions');
+  
+  if (!actions.length) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  if (count) count.textContent = actions.length;
+
+  const iconMap = {
+    monday_status_update: { icon: '📋', cls: 'ai-monday' },
+    invoice_logged: { icon: '🧾', cls: 'ai-invoice' },
+    ach_detected: { icon: '💳', cls: 'ai-ach' },
+    sub_invoice: { icon: '👷', cls: 'ai-sub' },
+    builder_po: { icon: '📬', cls: 'ai-po' },
+    job_created: { icon: '🏗️', cls: 'ai-monday' },
+  };
+
+  list.innerHTML = actions.map(a => {
+    const ic = iconMap[a.type] || { icon: '🤖', cls: 'ai-monday' };
+    const time = a.timestamp ? new Date(a.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+    return `
+      <div class="action-item" id="act-${esc(a.id)}">
+        <div class="action-icon ${ic.cls}">${ic.icon}</div>
+        <div class="action-body">
+          <div class="action-title">${esc(a.title)}${a.urgent ? ' 🔴' : ''}</div>
+          <div class="action-detail">${esc(a.detail || '')}</div>
+          ${a.followUp ? `<div class="action-followup">→ ${esc(a.followUp)}</div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+          <div class="action-time">${time}</div>
+          <button class="action-dismiss" onclick="dismissAction('${esc(a.id)}')">✓ Done</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function dismissAction(actionId) {
+  const el = document.getElementById(`act-${actionId}`);
+  if (el) { el.style.opacity = '0'; el.style.transition = 'opacity .2s'; }
+  try {
+    await fetch(`${WORKER_URL}/actions/dismiss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actionId }),
+    });
+    setTimeout(() => { el?.remove(); loadActions(); }, 200);
+  } catch(e) { console.error('Dismiss error:', e); }
+}
+
+async function dismissAll() {
+  try {
+    await fetch(`${WORKER_URL}/actions/dismiss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true }),
+    });
+    document.getElementById('actions-section').style.display = 'none';
+  } catch(e) { console.error('Dismiss all error:', e); }
 }
 
 function render(data){
