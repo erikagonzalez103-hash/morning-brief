@@ -706,29 +706,45 @@ function buildActions(item){
   const btns=[];
   const tags=item.tags||[];
   const type=item.type||'';
-  const isInvoiceSent = tags.includes('invoice-sent') || tags.includes('invoice_sent');
-  
-  if(tags.includes('approve'))btns.push('<button class="act-btn approve">Approve in BuilderTrend</button>');
-  
-  // Payment button — only for INCOMING payments (vendor invoices, ACH, subs)
-  // NOT for outgoing invoices we sent to builders (those are in Smart Glazier/Xero)
-  if(!isInvoiceSent && (type==='payment'||tags.includes('payment')) && !tags.includes('ach'))
-    btns.push('<button class="act-btn primary">Mark paid — order tracker</button>');
-  
-  // ACH confirmation — log to ledger, not order tracker
-  if(tags.includes('ach'))
-    btns.push('<button class="act-btn primary">Log to Profit First Ledger</button>');
-  
-  // Invoice sent — update Monday status
+  const isInvoiceSent = tags.includes('invoice-sent') || type === 'invoice_sent';
+  const isACH = tags.includes('ach');
+  const isPayment = (type==='payment'||tags.includes('payment')) && !isInvoiceSent && !isACH;
+  const isPO = type==='po'||tags.includes('po');
+  const isApprove = tags.includes('approve');
+  const isM3 = tags.includes('m3')||tags.includes('legacy');
+  const isBid = type==='bid'||type==='inquiry';
+  const isOPEX = tags.includes('opex');
+  const isSubInvoice = tags.includes('sub-invoice');
+
+  if(isApprove)
+    btns.push(`<button class="act-btn approve" onclick="window.open('https://buildertrend.net','_blank');event.stopPropagation()">Approve in BuilderTrend ↗</button>`);
+
   if(isInvoiceSent)
-    btns.push('<button class="act-btn primary">Update Monday → Invoice sent</button>');
-  
-  if(type==='po'||tags.includes('po'))btns.push('<button class="act-btn primary">Confirm — order tracker</button>');
-  if(tags.includes('m3')||tags.includes('legacy'))btns.push('<button class="act-btn urgent-btn">Review M3 statement</button>');
-  if(type==='bid'||type==='inquiry')btns.push('<button class="act-btn primary">Create Monday job</button>');
-  if(tags.includes('opex'))btns.push('<button class="act-btn primary">Log to OPEX — Ledger</button>');
-  btns.push('<button class="act-btn">Draft reply</button>');
-  btns.push('<button class="act-btn">Snooze</button>');
+    btns.push(`<button class="act-btn primary" onclick="navigator.clipboard.writeText('${esc(item.subject||'')}');alert('Job name copied — update Monday status to Invoice sent');event.stopPropagation()">Update Monday → Invoice sent</button>`);
+
+  if(isACH)
+    btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to Profit First Ledger ↗</button>`);
+
+  if(isPayment && !isSubInvoice)
+    btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/order-tracker/','_blank');event.stopPropagation()">Open order tracker ↗</button>`);
+
+  if(isSubInvoice)
+    btns.push(`<button class="act-btn primary" onclick="alert('Pay via ${item.paymentMethod||'Zelle'} and notify Dion');event.stopPropagation()">Pay ${item.paymentMethod||'Zelle'} — notify Dion</button>`);
+
+  if(isPO)
+    btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/order-tracker/','_blank');event.stopPropagation()">Open order tracker ↗</button>`);
+
+  if(isM3)
+    btns.push(`<button class="act-btn urgent-btn" onclick="alert('Review M3 statement carefully before paying — dispute account');event.stopPropagation()">Review M3 statement</button>`);
+
+  if(isBid)
+    btns.push(`<button class="act-btn primary" onclick="alert('Create job in Monday Upcoming Jobs');event.stopPropagation()">Create Monday job</button>`);
+
+  if(isOPEX)
+    btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to OPEX Ledger ↗</button>`);
+
+  btns.push(`<button class="act-btn" onclick="event.stopPropagation()">Draft reply</button>`);
+  btns.push(`<button class="act-btn" onclick="event.stopPropagation()">Snooze 7d</button>`);
   return btns.join('');
 }
 
