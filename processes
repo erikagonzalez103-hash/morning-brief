@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eridion — Process Library</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:#1B2A4A;--navy-deep:#111D33;--green:#2D6A4F;--green-light:#40916C;
+  --cream:#F8F5EF;--cream-dark:#EDE8DD;--gold:#C9A84C;--gold-light:#E8C96A;
+  --red:#C0392B;--red-soft:#FDF0EE;--amber:#D68910;--amber-soft:#FEF9EC;
+  --teal:#1A7A7A;--teal-soft:#EAF5F5;--purple:#6B4C9A;--purple-soft:#F2EDFA;
+  --text:#1B2A4A;--text-2:#4A5568;--text-3:#8A95A3;--border:#DDD6CA;--white:#FFFFFF;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);color:var(--text);min-height:100vh;font-size:14px;}
+
+.topbar{background:var(--navy-deep);height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;position:sticky;top:0;z-index:100;}
+.logo{font-family:'DM Serif Display',serif;color:var(--cream);font-size:20px;letter-spacing:.03em;display:flex;align-items:center;gap:8px;}
+.logo-dot{color:var(--gold);}
+.logo-tag{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;color:rgba(255,255,255,.35);letter-spacing:.1em;text-transform:uppercase;border-left:1px solid rgba(255,255,255,.15);padding-left:10px;}
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.add-btn{background:var(--gold);color:var(--navy-deep);border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;}
+.add-btn:hover{background:var(--gold-light);}
+
+.main{max-width:1100px;margin:0 auto;padding:1.5rem;}
+
+.lib-header{margin-bottom:1.5rem;}
+.lib-title{font-family:'DM Serif Display',serif;font-size:26px;color:var(--navy);}
+.lib-title em{color:var(--green);font-style:italic;}
+.lib-sub{font-size:13px;color:var(--text-3);margin-top:4px;}
+
+/* FILTER BAR */
+.filter-bar{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center;}
+.filter-btn{font-size:11px;font-weight:600;padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:var(--white);color:var(--text-2);cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.04em;}
+.filter-btn:hover{border-color:var(--navy);color:var(--navy);}
+.filter-btn.active{background:var(--navy);color:var(--white);border-color:var(--navy);}
+.search-box{flex:1;max-width:300px;padding:6px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--white);color:var(--text);outline:none;}
+.search-box:focus{border-color:var(--navy);}
+
+/* PROCESS GRID */
+.process-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1rem;}
+
+/* PROCESS CARD */
+.proc-card{background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:all .15s;cursor:pointer;animation:fadeUp .3s ease both;}
+.proc-card:hover{border-color:var(--navy);box-shadow:0 2px 12px rgba(27,42,74,.08);}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.proc-card-header{padding:14px 16px;border-bottom:1px solid var(--cream-dark);display:flex;align-items:flex-start;gap:10px;}
+.proc-cat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px;}
+.proc-cat-info{flex:1;min-width:0;}
+.proc-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:3px;}
+.proc-category{font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;font-weight:500;}
+.proc-status{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;flex-shrink:0;}
+.status-active{background:#EAF5EE;color:var(--green);}
+.status-draft{background:var(--amber-soft);color:var(--amber);}
+.status-review{background:var(--purple-soft);color:var(--purple);}
+
+.proc-body{padding:12px 16px;}
+.proc-trigger{font-size:12px;color:var(--text-2);margin-bottom:8px;line-height:1.5;}
+.proc-trigger strong{color:var(--text);font-weight:600;}
+.proc-steps{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;}
+.proc-step{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-2);line-height:1.5;}
+.step-num{width:18px;height:18px;border-radius:50%;background:var(--cream-dark);color:var(--text-3);font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+.proc-exceptions{font-size:11px;color:var(--amber);background:var(--amber-soft);border-radius:6px;padding:6px 10px;margin-bottom:8px;line-height:1.5;}
+.proc-exceptions strong{font-weight:600;}
+.proc-deadline{font-size:11px;color:var(--red);font-weight:600;display:flex;align-items:center;gap:5px;}
+.proc-footer{padding:10px 16px;border-top:1px solid var(--cream-dark);display:flex;align-items:center;justify-content:space-between;}
+.proc-meta{font-size:11px;color:var(--text-3);}
+.proc-actions{display:flex;gap:5px;}
+.proc-act-btn{font-size:11px;font-weight:500;padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--text-2);cursor:pointer;transition:all .15s;}
+.proc-act-btn:hover{background:var(--navy);color:var(--white);border-color:var(--navy);}
+.proc-act-btn.edit{color:var(--navy);border-color:var(--navy);}
+
+/* CATEGORY COLORS */
+.cat-billing{background:var(--green);}
+.cat-operations{background:var(--teal);}
+.cat-vendors{background:var(--gold);}
+.cat-builders{background:var(--navy);}
+.cat-subs{background:var(--purple);}
+.cat-filing{background:var(--amber);}
+.cat-invoicing{background:var(--red);}
+
+/* ADD PROCESS MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(17,29,51,.5);z-index:200;align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--white);border-radius:14px;width:min(600px,95vw);max-height:90vh;overflow-y:auto;}
+.modal-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-title{font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);}
+.modal-close{background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-3);padding:4px;}
+.modal-body{padding:20px;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;}
+.field input,.field select,.field textarea{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;background:var(--white);}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--navy);}
+.field textarea{resize:vertical;min-height:80px;}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.steps-builder{border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.step-row-input{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--cream-dark);}
+.step-row-input:last-child{border-bottom:none;}
+.step-num-static{width:20px;height:20px;border-radius:50%;background:var(--navy);color:var(--white);font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.step-input{flex:1;border:none;font-size:13px;color:var(--text);outline:none;font-family:'DM Sans',sans-serif;}
+.add-step-btn{padding:8px 10px;font-size:12px;color:var(--text-3);cursor:pointer;border:none;background:none;text-align:left;width:100%;border-top:1px solid var(--cream-dark);}
+.add-step-btn:hover{color:var(--navy);background:var(--cream);}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;}
+.btn-save{background:var(--navy);color:var(--white);border:none;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;}
+.btn-save:hover{background:var(--green);}
+.btn-cancel{background:var(--white);color:var(--text-2);border:1px solid var(--border);padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer;}
+
+/* EMPTY STATE */
+.empty-lib{text-align:center;padding:60px 20px;color:var(--text-3);}
+.empty-lib-title{font-family:'DM Serif Display',serif;font-size:20px;color:var(--text-2);margin-bottom:8px;}
+
+@media(max-width:600px){.process-grid{grid-template-columns:1fr;}.field-row{grid-template-columns:1fr;}}
+
+/* COMMAND CENTER NAV */
+.cc-nav{background:var(--navy);border-bottom:1px solid rgba(255,255,255,.1);padding:0 1.5rem;display:flex;align-items:center;height:40px;gap:2px;overflow-x:auto;}
+.cc-nav-link{font-size:12px;font-weight:500;padding:5px 16px;border-radius:6px;color:rgba(255,255,255,.45);text-decoration:none;transition:all .2s;white-space:nowrap;}
+.cc-nav-link:hover{color:rgba(255,255,255,.8);background:rgba(255,255,255,.07);}
+.cc-nav-link.active{color:var(--white);background:rgba(255,255,255,.13);}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Eridion<span class="logo-dot">.</span><span class="logo-tag">Process Library</span></div>
+  <div class="topbar-right">
+    <button class="add-btn" onclick="openModal()">+ Add process</button>
+  </div>
+</div>
+
+
+<nav class="cc-nav">
+  <a class="cc-nav-link" href="./index.html">Morning Brief</a>
+  <a class="cc-nav-link active" href="./processes.html">Process Library</a>
+  <a class="cc-nav-link" href="./winback.html">Win-back Scanner</a>
+  <a class="cc-nav-link" href="./drafts.html">Draft Engine</a>
+</nav>
+<div class="main">
+
+  <div class="lib-header">
+    <div class="lib-title">Living <em>Process Library</em></div>
+    <div class="lib-sub">Eridion's institutional knowledge — how we work, documented and always current. Francisco learns from this. So does everyone else.</div>
+  </div>
+
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="filterCat('all',this)">All</button>
+    <button class="filter-btn" onclick="filterCat('invoicing',this)">Invoicing</button>
+    <button class="filter-btn" onclick="filterCat('billing',this)">Billing</button>
+    <button class="filter-btn" onclick="filterCat('builders',this)">Builders</button>
+    <button class="filter-btn" onclick="filterCat('vendors',this)">Vendors</button>
+    <button class="filter-btn" onclick="filterCat('subs',this)">Sub installers</button>
+    <button class="filter-btn" onclick="filterCat('operations',this)">Operations</button>
+    <button class="filter-btn" onclick="filterCat('filing',this)">Filing</button>
+    <input class="search-box" type="text" placeholder="Search processes..." oninput="searchProcs(this.value)">
+  </div>
+
+  <div class="process-grid" id="process-grid"></div>
+
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-title">Add process</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field">
+          <label>Process name</label>
+          <input type="text" id="f-name" placeholder="e.g. Grand Homes invoice trigger">
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <select id="f-category">
+            <option value="invoicing">Invoicing</option>
+            <option value="billing">Billing</option>
+            <option value="builders">Builders</option>
+            <option value="vendors">Vendors</option>
+            <option value="subs">Sub installers</option>
+            <option value="operations">Operations</option>
+            <option value="filing">Filing</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Trigger — what starts this process?</label>
+        <input type="text" id="f-trigger" placeholder="e.g. BuildPro completion notification arrives">
+      </div>
+      <div class="field">
+        <label>Steps</label>
+        <div class="steps-builder" id="steps-builder">
+          <div class="step-row-input"><div class="step-num-static">1</div><input class="step-input" type="text" placeholder="First step..."></div>
+          <div class="step-row-input"><div class="step-num-static">2</div><input class="step-input" type="text" placeholder="Second step..."></div>
+        </div>
+        <button class="add-step-btn" onclick="addStep()">+ Add step</button>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Exceptions / edge cases</label>
+          <textarea id="f-exceptions" placeholder="e.g. If job is known complete before BuildPro email, don't wait..."></textarea>
+        </div>
+        <div class="field">
+          <label>Deadline (if any)</label>
+          <input type="text" id="f-deadline" placeholder="e.g. Invoices due Friday before noon">
+        </div>
+      </div>
+      <div class="field">
+        <label>Who's responsible</label>
+        <input type="text" id="f-owner" placeholder="e.g. Erika — billing, Dion — operations">
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="f-notes" placeholder="Additional context, history, or future changes planned..."></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="saveProcess()">Save process</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── SEED DATA — pre-loaded from everything Francisco has learned ───────
+const SEED_PROCESSES = [
+  {
+    id: 'p1',
+    name: 'Grand Homes — measure complete',
+    category: 'builders',
+    status: 'active',
+    trigger: 'BuildPro email arrives from postmaster@hyphensolutions.net with body header "Task Complete Notification" and Task field containing "Measure"',
+    steps: [
+      'Identify the job address and order number from the email body',
+      'Find the matching job in Monday.com',
+      'Update Monday job status → "Measured"',
+      'No invoice triggered at this stage',
+    ],
+    exceptions: 'Measure completion does not trigger an invoice. Wait for the separate BuildPro Completion Notification.',
+    deadline: null,
+    owner: 'Erika',
+    notes: 'Subject suffix (td) appears to indicate measurer initials. Detection: "Task Complete Notification" header + "Measure" in Task field.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p2',
+    name: 'Grand Homes — job complete / invoice trigger',
+    category: 'invoicing',
+    status: 'active',
+    trigger: 'BuildPro email arrives from postmaster@hyphensolutions.net with body header "BuildPro Completion Notification" and pricing line items table',
+    steps: [
+      'Identify job address, order number, and pricing from the email',
+      'Match to Monday job record',
+      'Update Monday job status → "Complete"',
+      'Generate invoice to Grand Homes billing contact',
+      'Send invoice — do not wait if Friday deadline is approaching',
+      'File email once invoice is confirmed sent',
+    ],
+    exceptions: 'If PM is slow to send BuildPro completion and Friday noon deadline is approaching, send invoice anyway based on known job completion. Do not wait on BuildPro email.',
+    deadline: 'All Grand Homes invoices due Friday before noon',
+    owner: 'Erika',
+    notes: 'Two types of BuildPro complete emails. This is Type 2 — contains "BuildPro Completion Notification" header and individual line items (Mirrors, Shower Doors) with pricing. Subject suffix (jme) = PM initials.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p3',
+    name: 'Weekly invoicing — Friday deadline',
+    category: 'invoicing',
+    status: 'active',
+    trigger: 'Thursday afternoon / Friday morning — Francisco scans for completed jobs without invoices sent',
+    steps: [
+      'Thursday PM: Francisco flags any jobs marked complete or measured in Monday without invoice sent',
+      'Friday AM brief: Priority banner shows all jobs needing invoices before noon',
+      'Generate invoices for each completed job',
+      'Send to billing contact (not PM) for each builder',
+      'Log in order tracker as invoiced',
+      'Update Monday status → "Invoiced"',
+    ],
+    exceptions: 'Grand Homes, Hines Homes, and D.R. Horton all have separate billing contacts — not the PM. Always send to billing/AR.',
+    deadline: 'Hard deadline: Friday before noon for all builders',
+    owner: 'Erika',
+    notes: 'This is the single most important weekly deadline. Francisco will surface a warning Thursday PM and a priority banner Friday AM.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p4',
+    name: 'Hines Homes — BuilderTrend PO approval',
+    category: 'builders',
+    status: 'active',
+    trigger: 'Email from info@buildertrend.com with subject "Hines Homes sent you a Purchase Order"',
+    steps: [
+      'Open email and review PO details — address, scope, price, scheduled completion date',
+      'Note: scheduled completion date is aspirational, not a hard deadline',
+      'Log in to BuilderTrend and Approve or Decline the PO',
+      'Create job in Monday.com "Upcoming Jobs" board',
+      'Enter in order tracker',
+      'Confirm scope with Dion',
+    ],
+    exceptions: 'Lingenfelter Homes also uses BuilderTrend — same process. Both require Approve/Decline in the portal.',
+    deadline: 'Approve/Decline promptly — builder cannot proceed until approved',
+    owner: 'Erika',
+    notes: 'Sender is BuilderTrend platform, not Hines directly. Builder name appears in email body. Completion dates in BuilderTrend are aspirational.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p5',
+    name: 'Vendor payment — outbound ACH',
+    category: 'billing',
+    status: 'active',
+    trigger: 'Ready to pay a vendor (FHC, Sky Glass, Waterfall Glass, M3)',
+    steps: [
+      'Pull open invoices from order tracker for that vendor',
+      'Generate payment confirmation email with invoice table (Amount, Invoice #, Due Date)',
+      'Send to vendor AR email — not the PM or sales contact',
+      'Log payment in Profit First Ledger → Materials bucket',
+      'Mark invoices as paid in order tracker',
+      'Capital One sends ACH confirmation email — Francisco logs automatically',
+    ],
+    exceptions: 'M3 Glass is a legacy dispute account — payments are paydown only. Log to Materials but flag as legacy.',
+    deadline: null,
+    owner: 'Erika',
+    notes: 'ACH account last 4: FHC=5143, Sky=1581, Waterfall=7343, M3=6039, Citizens Glass=3801. Vendor AR emails: FHC=accounting@fhc-usa.com, Sky=ar@skybm.com, Waterfall=Accounting@waterfallbathenclosures.com',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p6',
+    name: 'Sub installer payment — Zuritex (Zelle)',
+    category: 'subs',
+    status: 'active',
+    trigger: 'QuickBooks invoice arrives from quickbooks@notification.intuit.com with sender name "Zuritex Glass LLC"',
+    steps: [
+      'Verify work is complete for the associated job',
+      'Confirm amount with Dion if needed',
+      'Pay via Zelle',
+      'Log in Profit First Ledger → Subs bucket',
+      'Mark invoice as paid in order tracker',
+      'Notify Dion that payment was sent',
+    ],
+    exceptions: 'REMINDER invoices = overdue. Pay immediately.',
+    deadline: null,
+    owner: 'Erika — payment, Dion — work verification',
+    notes: 'Zuritex serves Dallas market. Payment method is Zelle only — not ACH or check.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p7',
+    name: 'Sub installer payment — Citizens Glass / Ryan (ACH)',
+    category: 'subs',
+    status: 'active',
+    trigger: 'Email from citizensglassman@gmail.com with weekly hours',
+    steps: [
+      'Read Ryan\'s hours email — note the jobs and hours worked',
+      'Match hours to active Little Rock jobs in order tracker',
+      'Calculate payment amount',
+      'Process ACH payment from Capital One account ending ...3801',
+      'Log in Profit First Ledger → Subs bucket',
+      'Notify Dion that payment was sent',
+    ],
+    exceptions: 'Ryan sends from a personal Gmail. If email bounces or goes quiet, call: (831) 233-1276.',
+    deadline: 'Weekly — Ryan sends hours weekly',
+    owner: 'Erika — payment, Dion — work verification',
+    notes: 'Citizens Glass LLC, 4110 Hanover Dr, Bryant AR 72022. Little Rock market only.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p8',
+    name: 'New quote — Smart Glazier BCC + follow-up',
+    category: 'operations',
+    status: 'active',
+    trigger: 'Quote sent from Smart Glazier — BCC copy arrives in inbox with subject "Eridion Glass: Quote [number]"',
+    steps: [
+      'BCC confirms quote was sent — log quote number and client',
+      'Start 24h response clock',
+      'If no client response in 24h — Francisco flags as stale',
+      'On approval (conversational "yes" from homeowner/small builder) — create Monday "Upcoming Jobs" item',
+      'On PO received (large builders) — follow builder-specific PO process',
+    ],
+    exceptions: 'Large builders (Hines, Grand Homes, DRH) will send formal PO — not a conversational approval. Small builders and homeowners reply conversationally.',
+    deadline: null,
+    owner: 'Erika',
+    notes: 'Quote number format: Eridion Glass: Quote [YYYYNNNN]. PDF attached named Quote [number].pdf.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p9',
+    name: 'SRC Services — Procore SOV submission',
+    category: 'billing',
+    status: 'active',
+    trigger: 'Email from SRC_Services_notifications@us02.procoretech.com requesting Schedule of Values breakdown',
+    steps: [
+      'Review commitment details — project name, contract value, scope',
+      'Log in to Procore via the link in the email',
+      'Submit detailed Schedule of Values breakdown',
+      'This must be done before any invoicing can occur on this job',
+      'Create job in Monday.com after SOV is accepted',
+    ],
+    exceptions: 'SOV submission is a prerequisite for invoicing on all commercial Procore jobs. Do not invoice until SOV is accepted.',
+    deadline: 'Submit promptly — invoicing is blocked until SOV is approved',
+    owner: 'Erika',
+    notes: 'SRC Services is our only Procore client currently. Commercial job workflow differs from residential.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p10',
+    name: 'M3 Glass — legacy account management',
+    category: 'vendors',
+    status: 'active',
+    trigger: 'Monthly statement arrives from accountsreceivable@m3glass.com',
+    steps: [
+      'Review statement — do NOT auto-log or auto-pay',
+      'Statement contains two series: invoices starting "2300" (Excel) and "MI" (PDF)',
+      'Manually review what is legitimately owed vs. disputed',
+      'Make partial payment as appropriate — this is a paydown account',
+      'Log payment in Profit First Ledger → Materials (legacy flag)',
+      'Respond to M3 confirming payment timeline if needed',
+    ],
+    exceptions: 'We no longer work with M3. This is strictly a legacy paydown. Never create new jobs or orders with M3.',
+    deadline: null,
+    owner: 'Erika',
+    notes: 'M3 Glass Technologies, Irving TX. Bought out — new management, quality issues led to end of relationship. ACH account ending ...6039.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p11',
+    name: 'Builder invoice — email format + billing contacts',
+    category: 'invoicing',
+    status: 'active',
+    trigger: 'Job marked complete in Monday — or Friday noon deadline approaching',
+    steps: [
+      'Generate invoice in Smart Glazier Business (Xero)',
+      'Smart Glazier pre-fills billing email — verify correct billing contact',
+      'Email body: "Hello [contact], Please find attached the invoice for [address/description]. [Xero payment link]. Or send checks to: Eridion Glass LLC, 1512 Knoll Manor Lane, Dallas TX 75206."',
+      'BCC erika@eridionglass.com always — Francisco detects this to log invoice sent',
+      'Attach Invoice [number].pdf',
+      'Send from Smart Glazier',
+      'Francisco detects BCC copy → logs as invoiced in order tracker + updates Monday status → "Invoiced"',
+    ],
+    exceptions: 'Grand Homes invoice body includes address + scope + PO# (e.g. "3513 Laurel - Mirrors - PO# 00233-05396"). Hines and Lingenfelter use address only.',
+    deadline: 'All invoices due Friday before noon',
+    owner: 'Erika',
+    notes: 'Billing contacts: Hines Homes = ap@hineshomes.com (Megan) | Lingenfelter = accounting@lingenfelterluxuryhomes.com | Grand Homes = billing@grandhomes.com (Grand Homes North Division). Invoices sent via Smart Glazier Business / Xero — NOT directly from Outlook.',
+    updated: '2026-04-06',
+  },
+  {
+    id: 'p12',
+    name: 'Invoice sent — BCC auto-detection + logging',
+    category: 'invoicing',
+    status: 'active',
+    trigger: 'BCC copy of sent invoice arrives in erika@eridionglass.com inbox from Smart Glazier (subject: "Eridion Glass: Invoice [number]")',
+    steps: [
+      'Francisco detects BCC — subject starts with "Eridion Glass: Invoice"',
+      'Extract invoice number, job address/description, and billing recipient from email',
+      'Match to open job in order tracker by address or PO number',
+      'Update order tracker → mark as "Invoiced" with invoice number and date',
+      'Update Monday.com job status → "Invoiced"',
+      'Start payment clock — flag if no payment received within 30 days',
+    ],
+    exceptions: 'If no matching job found in order tracker, flag for manual match.',
+    deadline: null,
+    owner: 'Francisco (automated)',
+    notes: 'This closes the loop between Smart Glazier invoicing and the order tracker without any manual data entry. The BCC is the trigger.',
+    updated: '2026-04-06',
+  },
+let processes = [];
+let activeFilter = 'all';
+let searchTerm = '';
+let editingId = null;
+let stepCount = 2;
+
+// ── INIT ─────────────────────────────────────────────────────────────
+function init() {
+  const saved = localStorage.getItem('eridion_processes');
+  if (saved) {
+    try { processes = JSON.parse(saved); } catch(e) { processes = [...SEED_PROCESSES]; }
+  } else {
+    processes = [...SEED_PROCESSES];
+    saveToStorage();
+  }
+  renderGrid();
+}
+
+function saveToStorage() {
+  localStorage.setItem('eridion_processes', JSON.stringify(processes));
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────
+function renderGrid() {
+  const grid = document.getElementById('process-grid');
+  let filtered = processes;
+
+  if (activeFilter !== 'all') {
+    filtered = filtered.filter(p => p.category === activeFilter);
+  }
+  if (searchTerm) {
+    const q = searchTerm.toLowerCase();
+    filtered = filtered.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.trigger.toLowerCase().includes(q) ||
+      (p.steps||[]).some(s => s.toLowerCase().includes(q)) ||
+      (p.notes||'').toLowerCase().includes(q)
+    );
+  }
+
+  if (!filtered.length) {
+    grid.innerHTML = '<div class="empty-lib" style="grid-column:1/-1"><div class="empty-lib-title">No processes found</div><div>Add your first process or adjust the filter.</div></div>';
+    return;
+  }
+
+  const catColors = {
+    invoicing:'cat-invoicing',billing:'cat-billing',builders:'cat-builders',
+    vendors:'cat-vendors',subs:'cat-subs',operations:'cat-operations',filing:'cat-filing'
+  };
+  const catLabels = {
+    invoicing:'Invoicing',billing:'Billing',builders:'Builders',
+    vendors:'Vendors',subs:'Sub installers',operations:'Operations',filing:'Filing'
+  };
+  const statusLabels = { active:'Active', draft:'Draft', review:'Needs review' };
+  const statusClass = { active:'status-active', draft:'status-draft', review:'status-review' };
+
+  grid.innerHTML = filtered.map(p => `
+    <div class="proc-card" id="card-${p.id}">
+      <div class="proc-card-header">
+        <div class="proc-cat-dot ${catColors[p.category]||'cat-operations'}"></div>
+        <div class="proc-cat-info">
+          <div class="proc-title">${esc(p.name)}</div>
+          <div class="proc-category">${catLabels[p.category]||p.category}</div>
+        </div>
+        <span class="proc-status ${statusClass[p.status]||'status-draft'}">${statusLabels[p.status]||p.status}</span>
+      </div>
+      <div class="proc-body">
+        <div class="proc-trigger"><strong>Trigger:</strong> ${esc(p.trigger)}</div>
+        <div class="proc-steps">
+          ${(p.steps||[]).slice(0,4).map((s,i) => `<div class="proc-step"><div class="step-num">${i+1}</div>${esc(s)}</div>`).join('')}
+          ${p.steps?.length > 4 ? `<div style="font-size:11px;color:var(--text-3);padding-left:26px">+${p.steps.length-4} more steps</div>` : ''}
+        </div>
+        ${p.exceptions ? `<div class="proc-exceptions"><strong>Exception:</strong> ${esc(p.exceptions)}</div>` : ''}
+        ${p.deadline ? `<div class="proc-deadline">⏰ ${esc(p.deadline)}</div>` : ''}
+      </div>
+      <div class="proc-footer">
+        <div class="proc-meta">Updated ${esc(p.updated)} · ${esc(p.owner||'—')}</div>
+        <div class="proc-actions">
+          <button class="proc-act-btn edit" onclick="editProcess('${p.id}',event)">Edit</button>
+          <button class="proc-act-btn" onclick="deleteProcess('${p.id}',event)">Delete</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+// ── FILTER / SEARCH ───────────────────────────────────────────────────
+function filterCat(cat, btn) {
+  activeFilter = cat;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderGrid();
+}
+
+function searchProcs(val) {
+  searchTerm = val;
+  renderGrid();
+}
+
+// ── MODAL ─────────────────────────────────────────────────────────────
+function openModal(proc = null) {
+  editingId = proc ? proc.id : null;
+  document.getElementById('modal-title').textContent = proc ? 'Edit process' : 'Add process';
+  document.getElementById('f-name').value = proc?.name || '';
+  document.getElementById('f-category').value = proc?.category || 'operations';
+  document.getElementById('f-trigger').value = proc?.trigger || '';
+  document.getElementById('f-exceptions').value = proc?.exceptions || '';
+  document.getElementById('f-deadline').value = proc?.deadline || '';
+  document.getElementById('f-owner').value = proc?.owner || 'Erika';
+  document.getElementById('f-notes').value = proc?.notes || '';
+
+  // Build steps
+  const builder = document.getElementById('steps-builder');
+  const steps = proc?.steps || ['', ''];
+  stepCount = steps.length;
+  builder.innerHTML = steps.map((s, i) =>
+    `<div class="step-row-input"><div class="step-num-static">${i+1}</div><input class="step-input" type="text" value="${esc(s)}" placeholder="Step ${i+1}..."></div>`
+  ).join('');
+
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  editingId = null;
+}
+
+function addStep() {
+  stepCount++;
+  const builder = document.getElementById('steps-builder');
+  const row = document.createElement('div');
+  row.className = 'step-row-input';
+  row.innerHTML = `<div class="step-num-static">${stepCount}</div><input class="step-input" type="text" placeholder="Step ${stepCount}...">`;
+  builder.appendChild(row);
+}
+
+function saveProcess() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { alert('Please enter a process name.'); return; }
+
+  const steps = Array.from(document.querySelectorAll('.step-input'))
+    .map(i => i.value.trim())
+    .filter(Boolean);
+
+  const proc = {
+    id: editingId || 'p' + Date.now(),
+    name,
+    category: document.getElementById('f-category').value,
+    status: 'active',
+    trigger: document.getElementById('f-trigger').value.trim(),
+    steps,
+    exceptions: document.getElementById('f-exceptions').value.trim(),
+    deadline: document.getElementById('f-deadline').value.trim() || null,
+    owner: document.getElementById('f-owner').value.trim(),
+    notes: document.getElementById('f-notes').value.trim(),
+    updated: new Date().toISOString().split('T')[0],
+  };
+
+  if (editingId) {
+    const idx = processes.findIndex(p => p.id === editingId);
+    if (idx >= 0) processes[idx] = proc;
+  } else {
+    processes.unshift(proc);
+  }
+
+  saveToStorage();
+  renderGrid();
+  closeModal();
+}
+
+function editProcess(id, event) {
+  event.stopPropagation();
+  const proc = processes.find(p => p.id === id);
+  if (proc) openModal(proc);
+}
+
+function deleteProcess(id, event) {
+  event.stopPropagation();
+  if (!confirm('Delete this process?')) return;
+  processes = processes.filter(p => p.id !== id);
+  saveToStorage();
+  renderGrid();
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Close modal on overlay click
+document.getElementById('modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+init();
+</script>
+</body>
+</html>
