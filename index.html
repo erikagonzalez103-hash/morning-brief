@@ -776,26 +776,9 @@ const saved=localStorage.getItem('eridion_mode');
 if(saved){const b=document.querySelector(`[onclick*="'${saved}'"]`);if(b)setMode(saved,b);}
 syncAll();
 
-// Auto-sync every 10 minutes — Francisco runs in the background
-const AUTO_SYNC_INTERVAL = 10 * 60 * 1000; // 10 minutes
-let autoSyncTimer = setInterval(() => {
-  // Only auto-sync if tab is visible — don't waste API calls when tab is hidden
-  if (!document.hidden) {
-    console.log('Francisco auto-sync...');
-    syncAll();
-  }
-}, AUTO_SYNC_INTERVAL);
-
-// Pause auto-sync when tab is hidden, resume when visible
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
-    // Tab became visible — sync immediately if it's been more than 5 minutes
-    const lastSyncEl = document.getElementById('last-sync-time');
-    const lastSyncText = lastSyncEl?.textContent || '';
-    console.log('Tab visible — checking if sync needed...');
-    syncAll();
-  }
-});
+// Francisco syncs automatically via Cloudflare Cron (every 15 min, 7am-6pm M-F)
+// No auto-sync needed here — open the brief when you want to review what Francisco did
+// The action log loads automatically on sync showing everything Francisco caught
 </script>
 </body>
 </html>
