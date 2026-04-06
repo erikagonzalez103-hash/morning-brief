@@ -514,6 +514,16 @@ function renderActions(actions) {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
           <div class="action-time">${time}</div>
           <button class="action-dismiss" onclick="dismissAction('${esc(a.id)}')">✓ Done</button>
+          <div style="position:relative;display:inline-block">
+            <button class="action-dismiss" style="color:var(--amber);border-color:var(--amber)" onclick="toggleSnooze('${esc(a.id)}', event)">⏱ Snooze</button>
+            <div id="snooze-${esc(a.id)}" style="display:none;position:absolute;right:0;top:100%;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:50;min-width:120px;overflow:hidden">
+              <div style="padding:4px 0">
+                <button onclick="doSnooze('${esc(a.id)}',3,event)" style="width:100%;padding:7px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text)">3 days</button>
+                <button onclick="doSnooze('${esc(a.id)}',7,event)" style="width:100%;padding:7px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text)">7 days</button>
+                <button onclick="doSnooze('${esc(a.id)}',14,event)" style="width:100%;padding:7px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text)">14 days</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -531,6 +541,37 @@ async function dismissAction(actionId) {
     setTimeout(() => { el?.remove(); loadActions(); }, 200);
   } catch(e) { console.error('Dismiss error:', e); }
 }
+
+function toggleSnooze(actionId, event) {
+  event.stopPropagation();
+  const el = document.getElementById(`snooze-${actionId}`);
+  if (!el) return;
+  // Close all other snooze menus
+  document.querySelectorAll('[id^="snooze-"]').forEach(e => {
+    if (e.id !== `snooze-${actionId}`) e.style.display = 'none';
+  });
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function doSnooze(actionId, days, event) {
+  event.stopPropagation();
+  document.getElementById(`snooze-${actionId}`)?.style && (document.getElementById(`snooze-${actionId}`).style.display = 'none');
+  const el = document.getElementById(`act-${actionId}`);
+  if (el) { el.style.opacity = '0.4'; el.style.transition = 'opacity .2s'; }
+  try {
+    await fetch(`${WORKER_URL}/actions/snooze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actionId, days }),
+    });
+    setTimeout(() => { el?.remove(); loadActions(); }, 300);
+  } catch(e) { console.error('Snooze error:', e); }
+}
+
+// Close snooze menus when clicking elsewhere
+document.addEventListener('click', () => {
+  document.querySelectorAll('[id^="snooze-"]').forEach(e => e.style.display = 'none');
+});
 
 async function dismissAll() {
   try {
