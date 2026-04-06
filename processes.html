@@ -505,6 +505,25 @@ const SEED_PROCESSES = [
     owner: 'Erika — job setup + billing, Dion — field ops',
     notes: 'Active builders: Grand Homes, Hines Homes, Lingenfelter Homes, DR Horton, Martyn Hammer, Gutman Homes. Terminated: Casa Linda (slow/non-payment). Inactive: Preston Trail, Knox Built.',
     updated: '2026-04-06',
+  },,
+  {
+    id: 'p15',
+    name: 'Job status lead times — Dion accountability thresholds',
+    category: 'operations',
+    status: 'active',
+    trigger: 'Francisco scans Jobs In Progress every 15 minutes — flags any job where status has not moved within the expected lead time',
+    steps: [
+      'Francisco checks each job status against its lead time threshold',
+      'If threshold exceeded — logs alert in Morning Brief action panel tagged DION',
+      'Erika sees alert: Job X stale for Y days — Dion to update Monday',
+      'Dion updates Monday status — Francisco detects change — alert clears on next cycle',
+      'If Installed and Complete and no invoice within 1 day — urgent flag for Erika',
+    ],
+    exceptions: 'Awaiting PO, Awaiting Readiness, and On Hold are indefinite — Francisco does not flag these. Commercial jobs have longer install windows.',
+    deadline: null,
+    owner: 'Francisco monitors, Dion updates, Erika reviews',
+    notes: 'Lead times: Quoting=1d, Ready for Measure=5d, Measured=1d, In Production=7d, Ready for Install=3d, Currently Installing=3d, Installed and Complete=1d, Invoice Sent=10d, Warranty Work Needed=1d, Warranty Work Complete=1d.',
+    updated: '2026-04-06',
   },
 ];
 
