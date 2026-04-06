@@ -623,9 +623,17 @@ async function draftCheckin(contactName, actionId, event) {
   btn.disabled = false;
 }
 
-async function updateMondayInvoiceSent(description, emailId, builderName, event) {
+function handleInvoiceSent(btn, event) {
   event.stopPropagation();
-  const btn = event.target;
+  const description = btn.getAttribute('data-description');
+  const emailId = btn.getAttribute('data-emailid');
+  const builder = btn.getAttribute('data-builder');
+  updateMondayInvoiceSent(description, emailId, builder, event, btn);
+}
+
+async function updateMondayInvoiceSent(description, emailId, builderName, event, btn) {
+  event.stopPropagation();
+  if (!btn) btn = event.target;
   btn.textContent = 'Updating Monday...';
   btn.disabled = true;
 
@@ -778,7 +786,11 @@ function buildActions(item){
     btns.push(`<button class="act-btn approve" onclick="window.open('https://buildertrend.net','_blank');event.stopPropagation()">Approve in BuilderTrend ↗</button>`);
 
   if(isInvoiceSent)
-    btns.push(`<button class="act-btn primary" onclick="updateMondayInvoiceSent('${esc(item.description||item.subject||'')}','${esc(item.id||'')}','${esc(item.builder||'')}',event)">Update Monday + File email</button>`);
+    btns.push(`<button class="act-btn primary" 
+      data-description="${esc(item.description||item.subject||'')}"
+      data-emailid="${esc(item.id||'')}"
+      data-builder="${esc(item.builder||'Grand Homes')}"
+      onclick="handleInvoiceSent(this,event)">Update Monday + File email</button>`);
 
   if(isACH)
     btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to Profit First Ledger ↗</button>`);
