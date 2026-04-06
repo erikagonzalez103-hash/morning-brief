@@ -497,6 +497,7 @@ function renderActions(actions) {
     sub_invoice: { icon: '👷', cls: 'ai-sub' },
     builder_po: { icon: '📬', cls: 'ai-po' },
     job_created: { icon: '🏗️', cls: 'ai-monday' },
+    dion_accountability: { icon: '⚠️', cls: 'ai-po' },
   };
 
   list.innerHTML = actions.map(a => {
@@ -506,7 +507,7 @@ function renderActions(actions) {
       <div class="action-item" id="act-${esc(a.id)}">
         <div class="action-icon ${ic.cls}">${ic.icon}</div>
         <div class="action-body">
-          <div class="action-title">${esc(a.title)}${a.urgent ? ' 🔴' : ''}</div>
+          <div class="action-title">${esc(a.title)}${a.urgent ? ' 🔴' : ''}${a.forDion ? ' <span style="font-size:10px;background:#EEF2FF;color:var(--navy);padding:1px 6px;border-radius:10px;font-weight:600">DION</span>' : ''}</div>
           <div class="action-detail">${esc(a.detail || '')}</div>
           ${a.followUp ? `<div class="action-followup">→ ${esc(a.followUp)}</div>` : ''}
         </div>
