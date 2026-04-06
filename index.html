@@ -492,18 +492,45 @@ function buildActions(item){
 function renderStale(items){
   const el=document.getElementById('stale-list');
   if(!items.length){el.innerHTML='<div class="empty">No stale threads.</div>';return;}
-  el.innerHTML=items.map(item=>`
-    <div class="stale-item" id="stale-${esc(item.id)}">
-      <div class="stale-hours">${item.hours}h<span>silent</span></div>
-      <div class="stale-info">
-        <div class="stale-from">${esc(item.from)}</div>
-        <div class="stale-subj">${esc(item.subject)}</div>
-      </div>
-      <div style="display:flex;gap:5px;flex-shrink:0">
-        <button class="draft-btn">Draft ↗</button>
-        <button class="draft-btn" style="color:var(--green);border-color:var(--green)" onclick="markComplete('stale-${esc(item.id)}','${esc(item.subject)}',event)">✓ Done</button>
-      </div>
-    </div>`).join('');
+  
+  // Separate into two groups
+  const awaitingReply = items.filter(i => i.staleType === 'awaiting_reply');
+  const theyWentQuiet = items.filter(i => i.staleType !== 'awaiting_reply');
+
+  const renderItem = (item) => {
+    const isAwaiting = item.staleType === 'awaiting_reply';
+    const label = isAwaiting ? 'reply' : 'silent';
+    const color = isAwaiting ? 'var(--red)' : 'var(--amber)';
+    return `
+      <div class="stale-item" id="stale-${esc(item.id)}">
+        <div class="stale-hours" style="color:${color}">${item.hours}h<span>${label}</span></div>
+        <div class="stale-info">
+          <div class="stale-from">${esc(item.from)}</div>
+          <div class="stale-subj">${esc(item.subject)}</div>
+        </div>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          <button class="draft-btn" style="${isAwaiting ? 'color:var(--red);border-color:var(--red);font-weight:600' : ''}">
+            ${isAwaiting ? 'Reply ↗' : 'Draft ↗'}
+          </button>
+          <button class="draft-btn" style="color:var(--green);border-color:var(--green)" onclick="markComplete('stale-${esc(item.id)}','${esc(item.subject)}',event)">✓ Done</button>
+        </div>
+      </div>`;
+  };
+
+  let html = '';
+
+  if (awaitingReply.length > 0) {
+    html += `<div style="padding:6px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--red);background:var(--red-soft);border-bottom:1px solid var(--cream-dark)">Awaiting your reply</div>`;
+    html += awaitingReply.map(renderItem).join('');
+  }
+  if (theyWentQuiet.length > 0) {
+    if (awaitingReply.length > 0) {
+      html += `<div style="padding:6px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--amber);background:var(--amber-soft);border-bottom:1px solid var(--cream-dark)">They went quiet</div>`;
+    }
+    html += theyWentQuiet.map(renderItem).join('');
+  }
+
+  el.innerHTML = html;
 }
 
 function markComplete(elId, subject, event) {
