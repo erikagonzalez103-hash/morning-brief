@@ -550,6 +550,25 @@ const WORKER='https://frosty-base-f01e.erikagonzalez103.workers.dev';
 const WORKER_URL = WORKER;
 let mode='standard',lastData=null;
 
+// Email data cache — avoids escaping issues in onclick attributes
+let _emailCache = [];
+function cacheEmail(item) {
+  const idx = _emailCache.length;
+  _emailCache.push({
+    from: item.from || '',
+    subject: item.subject || '',
+    preview: item.preview || '',
+    id: item.id || '',
+    builder: item.builder || '',
+  });
+  return idx;
+}
+function taskFromCache(idx, evt) {
+  if (evt) evt.stopPropagation();
+  const e = _emailCache[idx];
+  if (e) addEmailTask(e.from, e.subject, e.preview, e.id, e.builder);
+}
+
 // Date/time
 const now=new Date();
 const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -987,11 +1006,15 @@ async function dismissAll() {
 }
 
 function render(data){
-  const priority=data.priority||[];
-  const stale=data.stale||[];
+  _emailCache = []; // Reset cache for fresh render
+  const snoozed = getSnoozedEmails();
+  const notSnoozed = (item) => !snoozed[item.id];
+
+  const priority=(data.priority||[]).filter(notSnoozed);
+  const stale=(data.stale||[]).filter(notSnoozed);
   const vendorDocs=data.vendorDocs||[];
   const subInvoices=(data.subEmails||{}).invoices||[];
-  const inbox=data.inbox||[];
+  const inbox=(data.inbox||[]).filter(notSnoozed);
 
   const builderDocs=vendorDocs.filter(d=>isBuilder(d));
   const vendorOnly=vendorDocs.filter(d=>!isBuilder(d));
@@ -1099,9 +1122,10 @@ function buildActions(item){
   if(isOPEX)
     btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to OPEX Ledger ↗</button>`);
 
-  btns.push(`<button class="act-btn" onclick="event.stopPropagation()">Draft reply</button>`);
-  btns.push(`<button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="addEmailTask('${esc(item.from)}','${esc(item.subject)}','${esc(item.preview)}','${esc(item.id||'')}','${esc(item.builder||'')}');event.stopPropagation()">→ Task</button>`);
-  btns.push(`<button class="act-btn" onclick="event.stopPropagation()">Snooze 7d</button>`);
+  const _ci = cacheEmail(item);
+  btns.push(`<button class="act-btn" onclick="draftReply(${_ci},event)">Draft reply</button>`);
+  btns.push(`<button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="taskFromCache(${_ci},event)">→ Task</button>`);
+  btns.push(`<button class="act-btn" onclick="snoozeEmail('${esc(item.id)}',7,this,event)">Snooze 7d</button>`);
   return btns.join('');
 }
 
@@ -1116,6 +1140,7 @@ function renderStale(items){
     const isAwaiting = item.staleType === 'awaiting_reply';
     const label = isAwaiting ? 'reply' : 'silent';
     const color = isAwaiting ? 'var(--red)' : 'var(--amber)';
+    const _si = cacheEmail({ from: item.from, subject: item.subject, preview: 'stale ' + item.hours + 'h', id: item.id, builder: '' });
     return `
       <div class="stale-item" id="stale-${esc(item.id)}">
         <div class="stale-hours" style="color:${color}">${item.hours}h<span>${label}</span></div>
@@ -1127,7 +1152,7 @@ function renderStale(items){
           <button class="draft-btn" style="${isAwaiting ? 'color:var(--red);border-color:var(--red);font-weight:700' : ''}">
             ${isAwaiting ? 'Reply ↗' : 'Draft ↗'}
           </button>
-          <button class="draft-btn" style="color:var(--teal);border-color:var(--teal)" onclick="addEmailTask('${esc(item.from)}','${esc(item.subject)}','stale ${item.hours}h','${esc(item.id||'')}','');event.stopPropagation()">→ Task</button>
+          <button class="draft-btn" style="color:var(--teal);border-color:var(--teal)" onclick="taskFromCache(${_si},event)">→ Task</button>
           <button class="draft-btn" style="color:var(--green);border-color:var(--green)" onclick="markComplete('stale-${esc(item.id)}','${esc(item.subject)}',event)">✓ Done</button>
         </div>
       </div>`;
@@ -1228,7 +1253,9 @@ function renderBuilders(docs){
 function renderInbox(items){
   const el=document.getElementById('inbox-list');
   if(!items.length){el.innerHTML='<div class="empty">Inbox is clear.</div>';return;}
-  el.innerHTML=items.map((item,i)=>`
+  el.innerHTML=items.map((item,i)=>{
+    const _ii = cacheEmail(item);
+    return `
     <div class="email-item" id="ix${i}" onclick="toggleItem('ix${i}')">
       <div class="avatar av-navy">${initials(item.from)}</div>
       <div class="email-body">
@@ -1238,8 +1265,9 @@ function renderInbox(items){
       </div>
     </div>
     <div class="email-expanded" id="exp-ix${i}">
-      <div class="action-row"><button class="act-btn primary">Draft reply</button><button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="addEmailTask('${esc(item.from)}','${esc(item.subject)}','${esc(item.preview)}','${esc(item.id||'')}','');event.stopPropagation()">→ Task</button><button class="act-btn">File</button><button class="act-btn">Snooze</button></div>
-    </div>`).join('');
+      <div class="action-row"><button class="act-btn primary" onclick="draftReply(${_ii},event)">Draft reply</button><button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="taskFromCache(${_ii},event)">→ Task</button><button class="act-btn" onclick="snoozeEmail('${esc(item.id)}',7,this,event)">Snooze 7d</button></div>
+    </div>`;
+  }).join('');
 }
 
 function toggleItem(id){
@@ -1249,6 +1277,124 @@ function toggleItem(id){
   const wasOpen=item.classList.contains('open');
   document.querySelectorAll('.email-item.open').forEach(e=>e.classList.remove('open'));
   if(!wasOpen)item.classList.add('open');
+}
+
+/* ═══════════════════════════════════════════════════════
+   DRAFT REPLY — AI-generated contextual email replies
+   ═══════════════════════════════════════════════════════ */
+async function draftReply(cacheIdx, event) {
+  if (event) event.stopPropagation();
+  const e = _emailCache[cacheIdx];
+  if (!e) return;
+
+  // Show loading overlay
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:24px;max-width:540px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.2)">
+      <div style="font-size:14px;font-weight:600;color:var(--navy);margin-bottom:12px">✍ Drafting reply to ${esc(e.from)}...</div>
+      <div style="text-align:center;padding:20px"><div class="spinner"></div><div style="font-size:12px;color:var(--text-3);margin-top:8px">Claude is writing a reply...</div></div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  try {
+    const res = await fetch(`${WORKER_URL}/api/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 400,
+        messages: [{
+          role: 'user',
+          content: `You are drafting an email reply for Erika Gonzalez, owner of Eridion Glass (glass installation company in Dallas, TX).
+
+Reply to this email:
+From: ${e.from}
+Subject: ${e.subject}
+Preview: ${e.preview}
+
+Write a professional but warm reply. Keep it concise (3-5 sentences). Match the tone — if they're casual, be casual. If formal, be formal. Sign off as "Erika" (no last name, no title).
+
+If it's about a quote/bid: express interest and mention you'll review details.
+If it's about a payment: thank them and confirm receipt.
+If it's about scheduling: be accommodating and suggest next steps.
+If it's about a PO: confirm receipt and mention you'll process it.
+If it's informational/newsletter: write a brief acknowledgment.
+
+Write ONLY the email body. Start with "Hi [first name]," — no subject line.`
+        }]
+      })
+    });
+    const data = await res.json();
+    const draft = data.content?.[0]?.text || 'Could not generate draft';
+
+    overlay.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:24px;max-width:540px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.2)">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:4px">Reply to ${esc(e.from)}</div>
+        <div style="font-size:14px;font-weight:600;color:var(--navy);margin-bottom:12px">RE: ${esc(e.subject)}</div>
+        <div id="draft-body" style="font-size:13px;color:var(--text-2);line-height:1.65;white-space:pre-wrap;background:var(--cream);padding:14px;border-radius:8px;margin-bottom:14px;max-height:300px;overflow-y:auto" contenteditable="true">${esc(draft)}</div>
+        <div style="font-size:10px;color:var(--text-3);margin-bottom:12px">You can edit the draft above before copying.</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="navigator.clipboard.writeText(document.getElementById('draft-body').innerText);this.textContent='Copied!'" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s">Copy</button>
+          <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:8px 16px;border-radius:6px;border:none;background:var(--navy);color:white;cursor:pointer;font-size:12px;font-weight:500">Close</button>
+        </div>
+      </div>`;
+    overlay.addEventListener('click', ev => { if(ev.target === overlay) overlay.remove(); });
+
+  } catch(err) {
+    overlay.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:24px;max-width:540px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.2)">
+        <div style="font-size:14px;font-weight:600;color:var(--red);margin-bottom:8px">Could not generate draft</div>
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:14px">${err.message}</div>
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:8px 16px;border-radius:6px;border:none;background:var(--navy);color:white;cursor:pointer;font-size:12px">Close</button>
+      </div>`;
+    overlay.addEventListener('click', ev => { if(ev.target === overlay) overlay.remove(); });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   SNOOZE EMAIL — hide from priority/inbox for N days
+   ═══════════════════════════════════════════════════════ */
+const SNOOZED_KEY = 'eridion_snoozed_emails';
+
+function getSnoozedEmails() {
+  try {
+    const raw = localStorage.getItem(SNOOZED_KEY);
+    const snoozed = raw ? JSON.parse(raw) : {};
+    // Clean up expired snoozes
+    const now = Date.now();
+    let changed = false;
+    for (const id in snoozed) {
+      if (snoozed[id] < now) { delete snoozed[id]; changed = true; }
+    }
+    if (changed) localStorage.setItem(SNOOZED_KEY, JSON.stringify(snoozed));
+    return snoozed;
+  } catch(e) { return {}; }
+}
+
+function snoozeEmail(emailId, days, btn, event) {
+  if (event) event.stopPropagation();
+  const snoozed = getSnoozedEmails();
+  snoozed[emailId] = Date.now() + (days * 24 * 60 * 60 * 1000);
+  localStorage.setItem(SNOOZED_KEY, JSON.stringify(snoozed));
+
+  // Fade and remove the email item from view
+  if (btn) {
+    const emailItem = btn.closest('.email-item') || btn.closest('.email-expanded')?.previousElementSibling;
+    const expanded = btn.closest('.email-expanded') || emailItem?.nextElementSibling;
+    if (emailItem) { emailItem.style.opacity = '0'; emailItem.style.transition = 'opacity .3s'; }
+    if (expanded) { expanded.style.opacity = '0'; expanded.style.transition = 'opacity .3s'; }
+    setTimeout(() => {
+      emailItem?.remove();
+      expanded?.remove();
+      // Update counts
+      if (lastData) {
+        const counts = document.querySelectorAll('#priority-list .email-item').length;
+        set('s-priority', counts);
+        set('c-priority', counts);
+      }
+    }, 300);
+  }
 }
 
 // Init
