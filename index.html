@@ -379,6 +379,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 
 <script>
 const WORKER='https://frosty-base-f01e.erikagonzalez103.workers.dev';
+const WORKER_URL = WORKER;
 let mode='standard',lastData=null;
 
 // Date/time
@@ -391,7 +392,7 @@ document.getElementById('time-of-day').textContent=hr<12?'morning':hr<17?'aftern
 
 function scroll2(id){document.getElementById(id)?.scrollIntoView({behavior:'smooth'});}
 function set(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function initials(n){return (n||'?').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase();}
 
 function setMode(m,btn){
@@ -466,8 +467,6 @@ function renderFridayBanner(banner) {
   el.style.display = 'block';
 }
 
-const WORKER_URL = 'https://frosty-base-f01e.erikagonzalez103.workers.dev';
-
 async function loadActions() {
   try {
     const res = await fetch(`${WORKER_URL}/actions`);
@@ -521,7 +520,7 @@ function renderActions(actions) {
           <button class="action-dismiss" onclick="dismissAction('${esc(a.id)}')">✓ Done</button>
           <div style="position:relative;display:inline-block">
             <button class="action-dismiss" style="color:var(--amber);border-color:var(--amber)" onclick="toggleSnooze('${esc(a.id)}', event)">⏱ Snooze</button>
-            <div id="snooze-${esc(a.id)}" style="display:none;position:absolute;right:0;top:100%;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:50;min-width:120px;overflow:hidden">
+            <div id="snooze-${esc(a.id)}" onclick="event.stopPropagation()" style="display:none;position:absolute;right:0;top:100%;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:50;min-width:120px;overflow:hidden">
               <div style="padding:4px 0">
                 <button onclick="doSnooze('${esc(a.id)}',3,event)" style="width:100%;padding:7px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text)">3 days</button>
                 <button onclick="doSnooze('${esc(a.id)}',7,event)" style="width:100%;padding:7px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text)">7 days</button>
@@ -547,40 +546,62 @@ async function dismissAction(actionId) {
   } catch(e) { console.error('Dismiss error:', e); }
 }
 
+/* ───── FIX 1: toggleSnooze — stopPropagation to prevent document listener ───── */
 function toggleSnooze(actionId, event) {
   event.stopPropagation();
+  event.preventDefault();
   const el = document.getElementById(`snooze-${actionId}`);
   if (!el) return;
-  // Close all other snooze menus
+  // Close all OTHER snooze menus first
   document.querySelectorAll('[id^="snooze-"]').forEach(e => {
     if (e.id !== `snooze-${actionId}`) e.style.display = 'none';
   });
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
+/* ───── FIX 2: doSnooze — proper error recovery + clean dropdown close ───── */
 async function doSnooze(actionId, days, event) {
   event.stopPropagation();
-  document.getElementById(`snooze-${actionId}`)?.style && (document.getElementById(`snooze-${actionId}`).style.display = 'none');
+  event.preventDefault();
+
+  // Close the dropdown menu cleanly
+  const menu = document.getElementById(`snooze-${actionId}`);
+  if (menu) menu.style.display = 'none';
+
+  // Fade the action item as optimistic UI
   const el = document.getElementById(`act-${actionId}`);
-  if (el) { el.style.opacity = '0.4'; el.style.transition = 'opacity .2s'; }
+  if (el) {
+    el.style.transition = 'opacity .2s';
+    el.style.opacity = '0.4';
+  }
+
   try {
-    await fetch(`${WORKER_URL}/actions/snooze`, {
+    const res = await fetch(`${WORKER_URL}/actions/snooze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ actionId, days }),
     });
-    setTimeout(() => { el?.remove(); loadActions(); }, 300);
-  } catch(e) { console.error('Snooze error:', e); }
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    // Success — remove the item and refresh
+    setTimeout(() => { el?.remove(); loadActions(); }, 200);
+  } catch(e) {
+    console.error('Snooze error:', e);
+    // Recover the UI so the item isn't stuck faded
+    if (el) el.style.opacity = '1';
+    alert(`Snooze failed — check that your Worker has the /actions/snooze endpoint. (${e.message})`);
+  }
 }
 
-// Close snooze menus when clicking elsewhere
-document.addEventListener('click', () => {
-  document.querySelectorAll('[id^="snooze-"]').forEach(e => e.style.display = 'none');
+/* ───── FIX 3: Document click listener — only close when clicking OUTSIDE ───── */
+document.addEventListener('click', (e) => {
+  // Don't close if user clicked inside a snooze dropdown or on the snooze toggle button
+  if (e.target.closest('[id^="snooze-"]')) return;
+  if (e.target.closest('[onclick*="toggleSnooze"]')) return;
+  document.querySelectorAll('[id^="snooze-"]').forEach(el => el.style.display = 'none');
 });
 
 async function draftCheckin(contactName, actionId, event) {
   event.stopPropagation();
-  // Use Claude to draft a warm check-in via the /api proxy
   const btn = event.target;
   btn.textContent = 'Drafting...';
   btn.disabled = true;
@@ -601,7 +622,6 @@ async function draftCheckin(contactName, actionId, event) {
     const data = await res.json();
     const draft = data.content?.[0]?.text || 'Could not generate draft';
     
-    // Show draft in a modal-style overlay
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:1rem';
     overlay.innerHTML = `
@@ -638,7 +658,6 @@ async function updateMondayInvoiceSent(description, emailId, builderName, event,
   btn.disabled = true;
 
   try {
-    // Step 1: Update Monday status
     const mondayRes = await fetch(`${WORKER_URL}/monday`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -653,7 +672,6 @@ async function updateMondayInvoiceSent(description, emailId, builderName, event,
     if (mondayData.action === 'status_updated') {
       btn.textContent = 'Filing email...';
       
-      // Step 2: File the email in Outlook under Builder > Address
       const cleanAddress = description.replace(/\s*-\s*(mirrors|showers|glass|staircase|commercial).*/i,'').replace(/\s*PO#.*/i,'').trim();
       const builder = builderName || mondayData.item?.name?.split(' - ')[0] || 'Grand Homes';
       
@@ -822,7 +840,6 @@ function renderStale(items){
   const el=document.getElementById('stale-list');
   if(!items.length){el.innerHTML='<div class="empty">No stale threads.</div>';return;}
   
-  // Separate into two groups
   const awaitingReply = items.filter(i => i.staleType === 'awaiting_reply');
   const theyWentQuiet = items.filter(i => i.staleType !== 'awaiting_reply');
 
@@ -870,7 +887,6 @@ function markComplete(elId, subject, event) {
   el.style.transition = 'opacity 0.3s';
   setTimeout(() => {
     el.remove();
-    // Update stale count
     const remaining = document.querySelectorAll('[id^="stale-"]').length;
     set('c-stale', remaining);
     set('s-stale', remaining);
@@ -969,10 +985,6 @@ function toggleItem(id){
 const saved=localStorage.getItem('eridion_mode');
 if(saved){const b=document.querySelector(`[onclick*="'${saved}'"]`);if(b)setMode(saved,b);}
 syncAll();
-
-// Francisco syncs automatically via Cloudflare Cron (every 15 min, 7am-6pm M-F)
-// No auto-sync needed here — open the brief when you want to review what Francisco did
-// The action log loads automatically on sync showing everything Francisco caught
 </script>
 </body>
 </html>
