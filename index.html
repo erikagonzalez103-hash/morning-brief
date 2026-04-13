@@ -72,7 +72,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 .stat-label{font-size:11px;color:var(--text-3);font-weight:500;text-transform:uppercase;letter-spacing:.05em;}
 
 /* GRID */
-.grid-main{display:grid;grid-template-columns:1fr 340px;gap:1rem;margin-bottom:1rem;}
+.grid-main{display:grid;grid-template-columns:1fr 420px;gap:1rem;margin-bottom:1rem;}
 .grid-full{margin-bottom:1rem;}
 .grid-half{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
 
@@ -129,15 +129,16 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 .act-btn.urgent-btn{background:var(--red);color:var(--white);border-color:var(--red);}
 
 /* STALE */
-.stale-item{padding:10px 16px;border-bottom:1px solid var(--cream-dark);display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .12s;}
+.stale-item{padding:10px 16px;border-bottom:1px solid var(--cream-dark);display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;cursor:pointer;transition:background .12s;}
 .stale-item:last-child{border-bottom:none;}
 .stale-item:hover{background:var(--cream);}
-.stale-hours{font-family:'DM Serif Display',serif;font-size:18px;color:var(--amber);min-width:42px;text-align:center;flex-shrink:0;}
+.stale-hours{font-family:'DM Serif Display',serif;font-size:18px;color:var(--amber);min-width:38px;text-align:center;flex-shrink:0;}
 .stale-hours span{display:block;font-family:'DM Sans',sans-serif;font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-top:-2px;}
 .stale-info{flex:1;min-width:0;}
-.stale-from{font-size:13px;font-weight:600;}
-.stale-subj{font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.draft-btn{font-size:11px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--text-2);cursor:pointer;flex-shrink:0;transition:all .15s;}
+.stale-from{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stale-subj{font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stale-actions{display:flex;gap:4px;width:100%;padding-left:48px;}
+.draft-btn{font-size:10px;font-weight:600;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--text-2);cursor:pointer;flex-shrink:0;transition:all .15s;}
 .draft-btn:hover{background:var(--navy);color:var(--white);border-color:var(--navy);}
 
 /* VENDOR ITEMS */
@@ -1122,8 +1123,8 @@ function renderStale(items){
           <div class="stale-from">${esc(item.from)}</div>
           <div class="stale-subj">${esc(item.subject)}</div>
         </div>
-        <div style="display:flex;gap:5px;flex-shrink:0">
-          <button class="draft-btn" style="${isAwaiting ? 'color:var(--red);border-color:var(--red);font-weight:600' : ''}">
+        <div class="stale-actions">
+          <button class="draft-btn" style="${isAwaiting ? 'color:var(--red);border-color:var(--red);font-weight:700' : ''}">
             ${isAwaiting ? 'Reply ↗' : 'Draft ↗'}
           </button>
           <button class="draft-btn" style="color:var(--teal);border-color:var(--teal)" onclick="addEmailTask('${esc(item.from)}','${esc(item.subject)}','stale ${item.hours}h','${esc(item.id||'')}','');event.stopPropagation()">→ Task</button>
@@ -1263,12 +1264,30 @@ let tasks = [];
 let taskFilter = 'active';
 const TASKS_KEY = 'eridion_tasks';
 
-// ─── Persistence (localStorage now, Worker KV later) ───
-function loadTasks() {
+// ─── Persistence (Worker KV primary, localStorage fallback) ───
+async function loadTasks() {
+  // Try Worker first
+  try {
+    const res = await fetch(`${WORKER_URL}/tasks`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.tasks && data.tasks.length) {
+        tasks = data.tasks;
+        // Clear done tasks from previous days
+        const today = new Date().toDateString();
+        tasks = tasks.filter(t => !t.done || t.doneDate === today);
+        localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+        renderTasks();
+        updateTaskBadge();
+        return;
+      }
+    }
+  } catch(e) { console.log('Worker /tasks not available, using localStorage'); }
+
+  // Fall back to localStorage
   try {
     const raw = localStorage.getItem(TASKS_KEY);
     tasks = raw ? JSON.parse(raw) : [];
-    // Clear done tasks from previous days
     const today = new Date().toDateString();
     tasks = tasks.filter(t => !t.done || t.doneDate === today);
     saveTasks();
@@ -1280,9 +1299,10 @@ function loadTasks() {
 function saveTasks() {
   localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
   updateTaskBadge();
+  // Non-blocking sync to Worker
+  syncTasksToWorker();
 }
 
-// Also try Worker KV (non-blocking)
 async function syncTasksToWorker() {
   try {
     await fetch(`${WORKER_URL}/tasks`, {
