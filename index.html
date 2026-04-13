@@ -276,16 +276,18 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 
 /* ═══════════ TASK SIDEBAR ═══════════ */
 .task-toggle{
-  background:none;border:1px solid rgba(255,255,255,.2);color:var(--cream);
-  padding:5px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;
-  display:flex;align-items:center;gap:5px;transition:all .2s;position:relative;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:var(--cream);
+  width:34px;height:34px;border-radius:8px;font-size:15px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .2s;position:relative;
+  padding:0;
 }
-.task-toggle:hover{background:rgba(255,255,255,.1);}
+.task-toggle:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);}
 .task-toggle.has-tasks{border-color:var(--gold);color:var(--gold);}
 .task-badge{
-  position:absolute;top:-5px;right:-5px;width:16px;height:16px;border-radius:50%;
+  position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;border-radius:9px;
   background:var(--red);color:white;font-size:9px;font-weight:700;
-  display:flex;align-items:center;justify-content:center;
+  display:flex;align-items:center;justify-content:center;padding:0 4px;
+  border:2px solid var(--navy-deep);
 }
 
 .task-sidebar{
@@ -414,7 +416,7 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
   <div class="topbar-right">
     <div class="topbar-date" id="today-date"></div>
     <button class="sync-btn" id="sync-btn" onclick="syncAll()"><span id="sync-icon">↻</span> Sync</button>
-    <button class="task-toggle" id="task-toggle" onclick="toggleSidebar()">☐ Tasks<span class="task-badge" id="task-badge" style="display:none">0</span></button>
+    <button class="task-toggle" id="task-toggle" onclick="toggleSidebar()" title="Tasks (Ctrl+T)">☑<span class="task-badge" id="task-badge" style="display:none">0</span></button>
   </div>
 </div>
 
@@ -579,6 +581,8 @@ async function syncAll(){
     const res=await fetch(`${WORKER}/brief`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:'erika',mode})});
     if(!res.ok)throw new Error(res.status);
     const data=await res.json();
+    console.log('📋 Worker response:', JSON.stringify(data).slice(0,500));
+    console.log('📋 Priority:', data.priority?.length, '| Stale:', data.stale?.length, '| VendorDocs:', data.vendorDocs?.length, '| Inbox:', data.inbox?.length);
     lastData=data;
     render(data);
     setConn('live');
@@ -1050,6 +1054,7 @@ function renderStale(items){
           <button class="draft-btn" style="${isAwaiting ? 'color:var(--red);border-color:var(--red);font-weight:600' : ''}">
             ${isAwaiting ? 'Reply ↗' : 'Draft ↗'}
           </button>
+          <button class="draft-btn" style="color:var(--teal);border-color:var(--teal)" onclick="addEmailTask('${esc(item.from)}','${esc(item.subject)}','stale ${item.hours}h','${esc(item.id||'')}','');event.stopPropagation()">→ Task</button>
           <button class="draft-btn" style="color:var(--green);border-color:var(--green)" onclick="markComplete('stale-${esc(item.id)}','${esc(item.subject)}',event)">✓ Done</button>
         </div>
       </div>`;
@@ -1296,6 +1301,8 @@ function flashTask(emailId) {
 }
 
 // ─── AI priority suggestion ───
+let pendingSuggestion = null; // store current suggestion safely
+
 async function suggestPriority(task, from, subject, preview) {
   const area = document.getElementById('ai-suggest-area');
   area.innerHTML = `<div class="ai-suggest-bar">
@@ -1332,31 +1339,41 @@ Priority guide:
     const raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
     const suggestion = JSON.parse(raw);
 
-    // Show suggestion bar with confirm/change buttons
+    // Store suggestion safely in JS variable (avoids escaping issues in onclick)
+    pendingSuggestion = { taskId: task.id, priority: suggestion.priority, action: suggestion.action };
+
     area.innerHTML = `<div class="ai-suggest-bar">
       <div class="ai-suggest-text">
         <strong>🤖 Suggested: <span class="task-priority tp-${suggestion.priority}">${suggestion.priority.toUpperCase()}</span></strong>
         ${esc(suggestion.action)}
       </div>
       <div class="ai-suggest-actions">
-        <button class="ai-sug-btn accept" onclick="acceptSuggestion('${task.id}','${suggestion.priority}',${JSON.stringify(JSON.stringify(suggestion.action))})">✓ Accept</button>
-        <button class="ai-sug-btn p1-btn" onclick="acceptSuggestion('${task.id}','p1',${JSON.stringify(JSON.stringify(suggestion.action))})">P1</button>
-        <button class="ai-sug-btn p2-btn" onclick="acceptSuggestion('${task.id}','p2',${JSON.stringify(JSON.stringify(suggestion.action))})">P2</button>
-        <button class="ai-sug-btn p3-btn" onclick="acceptSuggestion('${task.id}','p3',${JSON.stringify(JSON.stringify(suggestion.action))})">P3</button>
+        <button class="ai-sug-btn accept" onclick="applySuggestion('accept')">✓ Accept</button>
+        <button class="ai-sug-btn p1-btn" onclick="applySuggestion('p1')">P1</button>
+        <button class="ai-sug-btn p2-btn" onclick="applySuggestion('p2')">P2</button>
+        <button class="ai-sug-btn p3-btn" onclick="applySuggestion('p3')">P3</button>
       </div>
     </div>`;
 
   } catch(e) {
     console.error('AI suggest failed:', e);
+    pendingSuggestion = { taskId: task.id, priority: 'p2', action: '' };
     area.innerHTML = `<div class="ai-suggest-bar">
       <div class="ai-suggest-text"><strong>Could not reach AI</strong> — set priority manually</div>
       <div class="ai-suggest-actions">
-        <button class="ai-sug-btn p1-btn" onclick="acceptSuggestion('${task.id}','p1','')">P1</button>
-        <button class="ai-sug-btn p2-btn" onclick="acceptSuggestion('${task.id}','p2','')">P2</button>
-        <button class="ai-sug-btn p3-btn" onclick="acceptSuggestion('${task.id}','p3','')">P3</button>
+        <button class="ai-sug-btn p1-btn" onclick="applySuggestion('p1')">P1</button>
+        <button class="ai-sug-btn p2-btn" onclick="applySuggestion('p2')">P2</button>
+        <button class="ai-sug-btn p3-btn" onclick="applySuggestion('p3')">P3</button>
       </div>
     </div>`;
   }
+}
+
+function applySuggestion(choice) {
+  if (!pendingSuggestion) return;
+  const priority = choice === 'accept' ? pendingSuggestion.priority : choice;
+  acceptSuggestion(pendingSuggestion.taskId, priority, pendingSuggestion.action);
+  pendingSuggestion = null;
 }
 
 function acceptSuggestion(taskId, priority, actionText) {
@@ -1485,6 +1502,15 @@ function renderTasks() {
       <div class="task-delete" onclick="deleteTask('${t.id}')" title="Remove">✕</div>
     </div>`;
   }).join('');
+
+  // Show "Clear completed" button on Done tab
+  if (taskFilter === 'done' && done.length > 0) {
+    list.innerHTML += `<div style="padding:10px 14px;text-align:center">
+      <button onclick="clearDoneTasks()" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--text-3);cursor:pointer;transition:all .15s"
+        onmouseover="this.style.background='var(--red)';this.style.color='white';this.style.borderColor='var(--red)'"
+        onmouseout="this.style.background='var(--white)';this.style.color='var(--text-3)';this.style.borderColor='var(--border)'">Clear completed tasks</button>
+    </div>`;
+  }
 }
 
 function getTimeAgo(iso) {
@@ -1513,6 +1539,21 @@ function updateTaskBadge() {
 
 // Init tasks
 loadTasks();
+
+// Clear done tasks
+function clearDoneTasks() {
+  tasks = tasks.filter(t => !t.done);
+  saveTasks();
+  renderTasks();
+}
+
+// Keyboard shortcut: Ctrl+T to toggle sidebar
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 't') {
+    e.preventDefault();
+    toggleSidebar();
+  }
+});
 </script>
 </body>
 </html>
