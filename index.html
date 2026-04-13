@@ -583,20 +583,78 @@ async function syncAll(){
     const data=await res.json();
     console.log('📋 Worker response:', JSON.stringify(data).slice(0,500));
     console.log('📋 Priority:', data.priority?.length, '| Stale:', data.stale?.length, '| VendorDocs:', data.vendorDocs?.length, '| Inbox:', data.inbox?.length);
-    lastData=data;
-    render(data);
+
+    // If Worker returned empty data, use demo data so the app is usable
+    const isEmpty = !(data.priority?.length || data.stale?.length || data.vendorDocs?.length || data.inbox?.length);
+    if (isEmpty) {
+      console.warn('⚠ Worker returned empty data — loading demo data. Check your Outlook token or Worker KV.');
+      lastData = getDemoData();
+    } else {
+      lastData = data;
+    }
+    render(lastData);
     setConn('live');
     loadActions();
-    document.getElementById('last-sync-time').textContent='Synced '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    document.getElementById('sync-status').textContent='Live';
+    document.getElementById('last-sync-time').textContent=(isEmpty ? 'Demo mode · ' : 'Synced ')+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    document.getElementById('sync-status').textContent=isEmpty ? 'Demo' : 'Live';
   }catch(e){
     console.error(e);
-    document.getElementById('brief-sub').textContent='Could not reach Francisco — check Worker. Retrying...';
+    // On error, also fall back to demo data
+    lastData = getDemoData();
+    render(lastData);
     setConn('error');
-    document.getElementById('sync-status').textContent='Error';
+    document.getElementById('brief-sub').textContent='Could not reach Francisco — showing demo data.';
+    document.getElementById('sync-status').textContent='Demo';
+    document.getElementById('last-sync-time').textContent='Demo mode';
   }
   btn.classList.remove('syncing');
   icon.textContent='↻';
+}
+
+function getDemoData() {
+  const t = (h,m) => {
+    const d = new Date(); d.setHours(h,m,0);
+    return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  };
+  return {
+    priority: [
+      { id:'demo-p1', from:'Roberto Salinas', subject:'Invoice #4821 — 14501 Stonebrook mirrors', preview:'Hi Erika, attached is the invoice for the mirror install at 14501 Stonebrook. Please confirm receipt.', type:'payment', tags:['invoice-sent','payment'], time:t(8,12), description:'14501 Stonebrook - mirrors', builder:'Grand Homes' },
+      { id:'demo-p2', from:'BuilderTrend Notification', subject:'Approval required: 9820 Juniper — shower enclosure PO', preview:'A new purchase order requires your approval in BuilderTrend. Job: 9820 Juniper Ridge.', type:'po', tags:['po','approve'], time:t(7,45), fromEmail:'notifications@buildertrend.net' },
+      { id:'demo-p3', from:'Maria Chen', subject:'RE: Casa Verde bid — updated measurements', preview:'Erika, I updated the measurements for the storefront glass. Can you send a revised quote by EOD?', type:'bid', tags:['bid','casaverde'], time:t(9,30) },
+      { id:'demo-p4', from:'Zelle Notification', subject:'Payment received: $3,450.00 from Hines Homes', preview:'You received a Zelle payment of $3,450.00 from Hines Homes LLC.', type:'payment', tags:['ach','payment'], time:t(6,55) },
+      { id:'demo-p5', from:'Tony Martinez', subject:'Reminder: Invoice overdue — 7710 Bluebonnet staircase railing', preview:'Hi Erika, just a reminder that our invoice for the staircase railing at 7710 Bluebonnet is now 15 days past due.', type:'urgent', tags:['urgent','sub-invoice'], time:t(8,40), paymentMethod:'Zelle' },
+      { id:'demo-p6', from:'FHC Glass Supply', subject:'Order confirmation #FHC-29841 — tempered panels', preview:'Your order for 12x tempered glass panels has been confirmed. Estimated delivery: April 18.', type:'payment', tags:['payment','fhc'], time:t(7,20) },
+    ],
+    stale: [
+      { id:'demo-s1', from:'David Park — Grand Homes', subject:'RE: 5501 Oakmont — install schedule change?', hours:36, staleType:'awaiting_reply' },
+      { id:'demo-s2', from:'Karen Liu', subject:'Quote request: frameless shower — 12200 Preston Hollow', hours:48, staleType:'awaiting_reply' },
+      { id:'demo-s3', from:'Jake Simmons — D.R. Horton', subject:'PO #DRH-7782 glass partition specs', hours:28, staleType:'they_went_quiet' },
+      { id:'demo-s4', from:'Gutman Homes', subject:'New project inquiry — Frisco Town Center', hours:72, staleType:'they_went_quiet' },
+    ],
+    vendorDocs: [
+      { id:'demo-v1', from:'FHC Glass Supply', subject:'Invoice #FHC-88120 — tempered panels, due net-30', time:t(7,15), fromEmail:'ar@fhc-usa.com', vendorDoc:{ vendorShort:'FHC', type:'VENDOR_INVOICE', treatment:'payment_workflow' }},
+      { id:'demo-v2', from:'Sky Building Materials', subject:'Statement of account — March 2026', time:t(6,50), fromEmail:'billing@skybm.com', vendorDoc:{ vendorShort:'Sky', type:'VENDOR_STATEMENT', treatment:'statement_review' }},
+      { id:'demo-v3', from:'M3 Glass Industries', subject:'Past due notice — Invoice #M3-4410', time:t(8,5), fromEmail:'collections@m3glass.com', vendorDoc:{ vendorShort:'M3', type:'VENDOR_INVOICE', treatment:'legacy_review' }},
+      { id:'demo-v4', from:'BuilderTrend Notification', subject:'Vendor notification: Hines Homes — 9820 Juniper PO approved', time:t(9,10), fromEmail:'notifications@buildertrend.net', vendorDoc:{ type:'ERIDION_PO', poNumber:'EG-2026-0412', sentBy:'Dion' }},
+      { id:'demo-v5', from:'Hyphen Solutions', subject:'New job assigned: Grand Homes — 14920 Bellflower', time:t(8,55), fromEmail:'alerts@hyphensolutions.com', vendorDoc:{ type:'BUILDER_PO' }},
+      { id:'demo-v6', from:'Waterfall Surfaces', subject:'Order #WF-6621 shipped — ETA April 16', time:t(7,30), fromEmail:'orders@waterfall.com', vendorDoc:{ vendorShort:'WATERFALL', type:'VENDOR_SHIPMENT', treatment:'status_update' }},
+    ],
+    subEmails: {
+      invoices: [
+        { id:'demo-sub1', from:'Tony Martinez', subject:'Invoice: 7710 Bluebonnet staircase railing', time:t(8,40), subDoc:{ sub:'Tony Martinez Glass', market:'DFW', paymentMethod:'Zelle' }},
+        { id:'demo-sub2', from:'Ramirez Install Co', subject:'Invoice #RI-320 — 14501 Stonebrook shower install', time:t(7,55), subDoc:{ sub:'Ramirez Install Co', market:'DFW', paymentMethod:'ACH' }},
+        { id:'demo-sub3', from:'Precision Glazing', subject:'Reminder: Invoice #PG-118 overdue — 5501 Oakmont', time:t(9,15), subDoc:{ sub:'Precision Glazing LLC', market:'DFW', paymentMethod:'Zelle' }},
+      ]
+    },
+    inbox: [
+      { id:'demo-i1', from:'Dion Gonzalez', subject:'Monday board update — 3 jobs need status changes', preview:'Hey Erika, I flagged 3 jobs that need status updates on Monday. Can you take a look when you get a chance?', time:t(9,45) },
+      { id:'demo-i2', from:'Lupe Hernandez', subject:'Team lunch Friday?', preview:'Hey! Want to do team lunch this Friday? Thinking BBQ.', time:t(10,0) },
+      { id:'demo-i3', from:'HER Dallas Events', subject:'May networking mixer — RSVP by April 18', preview:'You are invited to the HER Dallas May networking mixer at The Adolphus Hotel.', time:t(8,20) },
+      { id:'demo-i4', from:'QuickBooks Online', subject:'Weekly P&L summary — Eridion Glass LLC', preview:'Your weekly profit & loss summary is ready. Revenue: $12,450. Expenses: $8,210.', time:t(7,0) },
+      { id:'demo-i5', from:'FIFA 2026 Dallas Host Committee', subject:'Vendor badge pickup — credential instructions', preview:'Your vendor credentials for FIFA World Cup 2026 Dallas matches are ready for pickup.', time:t(6,30) },
+    ],
+    fridayBanner: null,
+  };
 }
 
 function setConn(s){
@@ -640,10 +698,24 @@ async function loadActions() {
   try {
     const res = await fetch(`${WORKER_URL}/actions`);
     const data = await res.json();
-    renderActions(data.pending || []);
+    const actions = data.pending || [];
+    if (actions.length) {
+      renderActions(actions);
+    } else {
+      renderActions(getDemoActions());
+    }
   } catch(e) {
     console.error('Could not load actions:', e);
+    renderActions(getDemoActions());
   }
+}
+
+function getDemoActions() {
+  return [
+    { id:'demo-act1', type:'winback_flag', title:'Gutman Homes has been quiet for 90 days', detail:'Last contact: none in 90 days · Threshold: 45 days', followUp:'Send a warm check-in to Gutman Homes', timestamp:new Date().toISOString(), winbackStage:'flag', winbackContact:'Gutman Homes' },
+    { id:'demo-act2', type:'dion_accountability', title:'14501 Stonebrook — status stale for 5 days', detail:'Status: "Warranty work needed" · Last updated 5 days ago · Expected: 1 day', followUp:'Dion to update Monday status for 14501 Stonebrook', timestamp:new Date(Date.now()-3600000*3).toISOString(), urgent:false, forDion:true },
+    { id:'demo-act3', type:'invoice_logged', title:'Invoice #4821 filed to Grand Homes → 14501 Stonebrook', detail:'Amount: $2,850 · Filed automatically from Outlook', timestamp:new Date(Date.now()-3600000*1).toISOString() },
+  ];
 }
 
 function renderActions(actions) {
