@@ -875,7 +875,7 @@ async function draftCheckin(contactName, actionId, event) {
   btn.disabled = true;
   
   try {
-    const res = await fetch(`${WORKER_URL}/api`, {
+    const res = await fetch(`${WORKER_URL}/api/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1402,7 +1402,7 @@ async function suggestPriority(task, from, subject, preview) {
   </div>`;
 
   try {
-    const res = await fetch(`${WORKER_URL}/api`, {
+    const res = await fetch(`${WORKER_URL}/api/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
