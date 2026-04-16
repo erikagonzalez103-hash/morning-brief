@@ -1091,6 +1091,8 @@ function buildActions(item){
   const isOPEX = tags.includes('opex');
   const isSubInvoice = tags.includes('sub-invoice');
 
+  const _ci = cacheEmail(item);
+
   if(isApprove)
     btns.push(`<button class="act-btn approve" onclick="window.open('https://buildertrend.net','_blank');event.stopPropagation()">Approve in BuilderTrend ↗</button>`);
 
@@ -1108,7 +1110,7 @@ function buildActions(item){
     btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/order-tracker/','_blank');event.stopPropagation()">Open order tracker ↗</button>`);
 
   if(isSubInvoice)
-    btns.push(`<button class="act-btn primary" onclick="alert('Pay via ${item.paymentMethod||'Zelle'} and notify Dion');event.stopPropagation()">Pay ${item.paymentMethod||'Zelle'} — notify Dion</button>`);
+    btns.push(`<button class="act-btn primary" onclick="paySubNotifyDion(${_ci},this,event)">Pay ${item.paymentMethod||'Zelle'} — notify Dion</button>`);
 
   if(isPO)
     btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/order-tracker/','_blank');event.stopPropagation()">Open order tracker ↗</button>`);
@@ -1117,12 +1119,11 @@ function buildActions(item){
     btns.push(`<button class="act-btn urgent-btn" onclick="alert('Review M3 statement carefully before paying — dispute account');event.stopPropagation()">Review M3 statement</button>`);
 
   if(isBid)
-    btns.push(`<button class="act-btn primary" onclick="alert('Create job in Monday Upcoming Jobs');event.stopPropagation()">Create Monday job</button>`);
+    btns.push(`<button class="act-btn primary" onclick="createMondayJob(${_ci},this,event)">Create Monday job</button>`);
 
   if(isOPEX)
     btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to OPEX Ledger ↗</button>`);
 
-  const _ci = cacheEmail(item);
   btns.push(`<button class="act-btn" onclick="draftReply(${_ci},event)">Draft reply</button>`);
   btns.push(`<button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="taskFromCache(${_ci},event)">→ Task</button>`);
   btns.push(`<button class="act-btn" onclick="snoozeEmail('${esc(item.id)}',7,this,event)">Snooze 7d</button>`);
@@ -1394,6 +1395,115 @@ function snoozeEmail(emailId, days, btn, event) {
         set('c-priority', counts);
       }
     }, 300);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MONDAY.COM — Create job from email
+   ═══════════════════════════════════════════════════════ */
+async function createMondayJob(cacheIdx, btn, event) {
+  if (event) event.stopPropagation();
+  const e = _emailCache[cacheIdx];
+  if (!e) return;
+
+  btn.textContent = 'Creating...';
+  btn.disabled = true;
+
+  try {
+    const aiRes = await fetch(`${WORKER_URL}/api/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 200,
+        messages: [{
+          role: 'user',
+          content: `Extract job details from this email. Return ONLY JSON, no markdown:
+{"address":"street address if found","builder":"builder/client name","scope":"what work is needed (showers, mirrors, glass, etc)","amount":0,"po":"PO or quote number if found"}
+
+From: ${e.from}
+Subject: ${e.subject}
+Preview: ${e.preview}`
+        }]
+      })
+    });
+    const aiData = await aiRes.json();
+    const raw = (aiData.content?.[0]?.text || '').replace(/\`\`\`json|\`\`\`/g, '').trim();
+    let parsed = {};
+    try { parsed = JSON.parse(raw); } catch(pe) {}
+
+    const jobName = parsed.address || e.subject.replace(/^(re:|fwd:|fw:)\s*/i, '').substring(0, 60);
+    const builder = parsed.builder || e.from;
+    const scope = parsed.scope || '';
+    const amount = parsed.amount || 0;
+    const po = parsed.po || '';
+
+    const res = await fetch(`${WORKER_URL}/monday/create-job`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: jobName,
+        builder: builder,
+        poAmt: amount,
+        jobItems: scope,
+        clientPO: po,
+      })
+    });
+    const data = await res.json();
+
+    if (data.action === 'job_created') {
+      btn.textContent = '✓ Created in Monday!';
+      btn.style.background = 'var(--green)';
+      btn.style.borderColor = 'var(--green)';
+      btn.style.color = 'white';
+    } else {
+      btn.textContent = '⚠ ' + (data.error || 'Failed');
+      btn.style.color = 'var(--amber)';
+      btn.disabled = false;
+    }
+  } catch(err) {
+    btn.textContent = 'Error — try again';
+    btn.disabled = false;
+    console.error('Monday create error:', err);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PAY SUB + NOTIFY DION
+   ═══════════════════════════════════════════════════════ */
+async function paySubNotifyDion(cacheIdx, btn, event) {
+  if (event) event.stopPropagation();
+  const e = _emailCache[cacheIdx];
+  if (!e) return;
+
+  const method = e.preview.toLowerCase().indexOf('ach') !== -1 ? 'ACH' : 'Zelle';
+
+  if (!confirm('Pay ' + e.from + ' via ' + method + '?\n\nSubject: ' + e.subject + '\n\nThis will:\n1. Log the payment\n2. Send Dion a notification')) return;
+
+  btn.textContent = 'Processing...';
+  btn.disabled = true;
+
+  try {
+    await fetch(`${WORKER_URL}/handoff/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'francisco',
+        to: 'biff',
+        type: 'INFO',
+        priority: 'normal',
+        subject: 'Sub payment sent: ' + e.from,
+        body: 'Erika paid ' + e.from + ' via ' + method + '. Email subject: ' + e.subject,
+      })
+    });
+
+    btn.textContent = '✓ Paid + Dion notified';
+    btn.style.background = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    btn.style.color = 'white';
+  } catch(err) {
+    btn.textContent = 'Error — try again';
+    btn.disabled = false;
   }
 }
 
