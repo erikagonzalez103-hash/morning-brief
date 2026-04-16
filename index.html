@@ -109,6 +109,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 .tag-payment{background:#EAF5EE;color:var(--green);}
 .tag-po{background:#EEF2FF;color:var(--navy);}
 .tag-bid{background:var(--teal-soft);color:var(--teal);}
+.tag-new_job,.tag-newjob{background:#EAF5EE;color:var(--green);}
 .tag-sub-invoice{background:var(--purple-soft);color:var(--purple);}
 .tag-fhc{background:#FEF8E7;color:#8B6914;}
 .tag-sky{background:var(--teal-soft);color:var(--teal);}
@@ -1052,11 +1053,11 @@ function isBuilder(doc){
 }
 
 function avClass(type){
-  return {urgent:'av-red',payment:'av-amber',po:'av-navy',bid:'av-teal',inquiry:'av-teal',change_order:'av-red',new_client:'av-green'}[type]||'av-navy';
+  return {urgent:'av-red',payment:'av-amber',po:'av-navy',bid:'av-teal',inquiry:'av-teal',new_job:'av-green',change_order:'av-red',new_client:'av-green'}[type]||'av-navy';
 }
 
 function tagLabel(t){
-  return {'sub-invoice':'Sub invoice','new_client':'New client','change_order':'Change order','casaverde':'Casa Verde','herdallas':'HER Dallas'}[t]||(t||'').toUpperCase();
+  return {'sub-invoice':'Sub invoice','new_client':'New client','new_job':'New Job','change_order':'Change order','casaverde':'Casa Verde','herdallas':'HER Dallas'}[t]||(t||'').toUpperCase();
 }
 
 function renderPriority(items){
@@ -1119,12 +1120,10 @@ function buildActions(item){
   if(isM3)
     btns.push(`<button class="act-btn urgent-btn" onclick="alert('Review M3 statement carefully before paying — dispute account');event.stopPropagation()">Review M3 statement</button>`);
 
-  if(isBid)
-    btns.push(`<button class="act-btn primary" onclick="createMondayJob(${_ci},this,event)">Create Monday job</button>`);
-
   if(isOPEX)
     btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to OPEX Ledger ↗</button>`);
 
+  btns.push(`<button class="act-btn" style="color:var(--green);border-color:var(--green)" onclick="createMondayJob(${_ci},this,event)">Create Monday job</button>`);
   btns.push(`<button class="act-btn" onclick="draftReply(${_ci},event)">Draft reply</button>`);
   btns.push(`<button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="taskFromCache(${_ci},event)">→ Task</button>`);
   btns.push(`<button class="act-btn" onclick="snoozeEmail('${esc(item.id)}',7,this,event)">Snooze 7d</button>`);
@@ -1267,7 +1266,7 @@ function renderInbox(items){
       </div>
     </div>
     <div class="email-expanded" id="exp-ix${i}">
-      <div class="action-row"><button class="act-btn primary" onclick="draftReply(${_ii},event)">Draft reply</button><button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="taskFromCache(${_ii},event)">→ Task</button><button class="act-btn" onclick="snoozeEmail('${esc(item.id)}',7,this,event)">Snooze 7d</button></div>
+      <div class="action-row"><button class="act-btn primary" onclick="draftReply(${_ii},event)">Draft reply</button><button class="act-btn" style="color:var(--green);border-color:var(--green)" onclick="createMondayJob(${_ii},this,event)">Create Monday job</button><button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="taskFromCache(${_ii},event)">→ Task</button><button class="act-btn" onclick="snoozeEmail('${esc(item.id)}',7,this,event)">Snooze 7d</button></div>
     </div>`;
   }).join('');
 }
