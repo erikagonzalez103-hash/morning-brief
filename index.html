@@ -552,6 +552,7 @@ let mode='standard',lastData=null;
 
 // Email data cache — avoids escaping issues in onclick attributes
 let _emailCache = [];
+var _pendingMondayEmail = null; // stores email data for filing after Monday creation
 function cacheEmail(item) {
   const idx = _emailCache.length;
   _emailCache.push({
@@ -1406,65 +1407,294 @@ async function createMondayJob(cacheIdx, btn, event) {
   const e = _emailCache[cacheIdx];
   if (!e) return;
 
-  btn.textContent = 'Creating...';
+  btn.textContent = 'Fetching email...';
   btn.disabled = true;
 
   try {
-    const aiRes = await fetch(`${WORKER_URL}/api/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 200,
-        messages: [{
-          role: 'user',
-          content: `Extract job details from this email. Return ONLY JSON, no markdown:
-{"address":"street address if found","builder":"builder/client name","scope":"what work is needed (showers, mirrors, glass, etc)","amount":0,"po":"PO or quote number if found"}
+    // ── Step 1: Fetch full email body from Outlook ──
+    var fullBody = e.preview;
+    var attachments = [];
+    if (e.id) {
+      try {
+        const bodyRes = await fetch(`${WORKER_URL}/email/body?id=${encodeURIComponent(e.id)}`);
+        const bodyData = await bodyRes.json();
+        if (bodyData.body) fullBody = bodyData.body;
+        if (bodyData.attachments) attachments = bodyData.attachments;
+      } catch(be) { console.log('Email body fetch failed, using preview'); }
+    }
+
+    // ── Step 2: Check for PDF attachments (Work Orders) ──
+    var pdfAttachment = attachments.find(function(a) {
+      return a.contentType === 'application/pdf' || (a.name && a.name.toLowerCase().endsWith('.pdf'));
+    });
+    var pdfData = null;
+
+    if (pdfAttachment && e.id) {
+      btn.textContent = 'Reading attachment...';
+      try {
+        const attRes = await fetch(`${WORKER_URL}/email/attachment?emailId=${encodeURIComponent(e.id)}&attachmentId=${encodeURIComponent(pdfAttachment.id)}`);
+        const attData = await attRes.json();
+        if (attData.contentBytes) pdfData = attData;
+      } catch(ae) { console.log('Attachment fetch failed'); }
+    }
+
+    // ── Step 3: Send to Claude for extraction ──
+    btn.textContent = 'AI extracting...';
+
+    var messages = [];
+    if (pdfData && pdfData.contentBytes) {
+      // Send the PDF to Claude for extraction
+      messages = [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfData.contentBytes }, citations: { enabled: false } },
+          { type: 'text', text: `Extract job details from this Work Order / PO document from Eridion Glass. Return ONLY JSON, no markdown:
+{"address":"the Customer Ref or job site address","builder":"the client/builder name from the For: field","internalJob":"the Work Order number","scope":"description of work (e.g. Supply & Install Primary Bath Mirrors)","amount":0,"po":"Client PO or quote number","installDate":"YYYY-MM-DD from Required By date","poDate":"YYYY-MM-DD from Date field"}
+
+The Name field in Monday.com should be the JOB ADDRESS (Customer Ref), NOT the quote number.` }
+        ]
+      }];
+    } else {
+      // Use email body text
+      messages = [{
+        role: 'user',
+        content: `Extract job details from this email for Eridion Glass (glass installation company). Return ONLY JSON, no markdown:
+{"address":"the job site street address if found","builder":"builder/client name","internalJob":"work order or internal job number if found","scope":"what work is needed (showers, mirrors, glass, etc)","amount":0,"po":"Client PO or quote number if found","installDate":"YYYY-MM-DD if an install or required-by date is mentioned","poDate":"YYYY-MM-DD if a PO date is mentioned"}
+
+The address field should be the STREET ADDRESS of the job site, not a quote number or company name.
 
 From: ${e.from}
 Subject: ${e.subject}
-Preview: ${e.preview}`
-        }]
-      })
+Full email body:
+${fullBody}`
+      }];
+    }
+
+    const aiRes = await fetch(`${WORKER_URL}/api/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: messages })
     });
     const aiData = await aiRes.json();
-    const raw = (aiData.content?.[0]?.text || '').replace(/\`\`\`json|\`\`\`/g, '').trim();
+    const raw = (aiData.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
     let parsed = {};
     try { parsed = JSON.parse(raw); } catch(pe) {}
 
-    const jobName = parsed.address || e.subject.replace(/^(re:|fwd:|fw:)\s*/i, '').substring(0, 60);
-    const builder = parsed.builder || e.from;
-    const scope = parsed.scope || '';
-    const amount = parsed.amount || 0;
-    const po = parsed.po || '';
+    // ── Step 4: Show preview modal ──
+    btn.textContent = 'Review...';
+    showMondayPreview(parsed, e, pdfData ? pdfData.name : null, btn);
 
-    const res = await fetch(`${WORKER_URL}/monday/create-job`, {
+  } catch(err) {
+    btn.textContent = 'Error — try again';
+    btn.disabled = false;
+    console.error('Monday create error:', err);
+  }
+}
+
+function showMondayPreview(parsed, emailData, pdfName, originalBtn) {
+  var address = parsed.address || '';
+  var builder = parsed.builder || emailData.from || '';
+  var internalJob = parsed.internalJob || '';
+  var scope = parsed.scope || '';
+  var amount = parsed.amount || 0;
+  var po = parsed.po || '';
+  var installDate = parsed.installDate || '';
+  var poDate = parsed.poDate || '';
+
+  // Auto-detect market from address or builder
+  var searchText = (address + ' ' + builder).toLowerCase();
+  var isArkansas = /little rock|arkansas|\bar\b|conway|benton|bryant|cabot|sherwood|maumelle|jacksonville ar|north little rock/i.test(searchText);
+  var market = isArkansas ? 'littlerock' : 'dallas';
+
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:24px;max-width:520px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.2)">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:4px">Create Monday Job</div>
+      <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:4px">Review extracted data before creating</div>
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:16px">${pdfName ? '📎 Extracted from: ' + pdfName : '📧 Extracted from email body'}</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Job Address (Name)</label>
+          <input type="text" id="mj-address" value="${esc(address)}" placeholder="e.g. 1051 Hope Valley" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;${address ? 'border-color:var(--green)' : 'border-color:var(--red)'}"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Home Builder</label>
+          <input type="text" id="mj-builder" value="${esc(builder)}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Internal Job # (WO)</label>
+          <input type="text" id="mj-internal" value="${esc(internalJob)}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">PO Amount ($)</label>
+          <input type="number" id="mj-amount" value="${amount || ''}" step="0.01" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Client PO #</label>
+          <input type="text" id="mj-po" value="${esc(po)}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Install Date</label>
+          <input type="date" id="mj-install" value="${installDate}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Market</label>
+          <select id="mj-market" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:white">
+            <option value="dallas">Dallas / DFW</option>
+            <option value="littlerock">Little Rock / Arkansas</option>
+          </select></div>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Job Items / Description</label>
+        <input type="text" id="mj-scope" value="${esc(scope)}" placeholder="e.g. Supply & Install Primary Bath Mirrors" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit">
+      </div>
+
+      <div style="background:var(--cream);border-radius:8px;padding:12px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">📎 Upload Work Order PDF (optional)</div>
+        <div style="font-size:11px;color:var(--text-2);margin-bottom:8px">If the email didn't have enough detail, upload the Work Order PDF to extract all fields.</div>
+        <input type="file" id="mj-pdf-upload" accept=".pdf,.png,.jpg,.jpeg" style="font-size:12px" onchange="extractMondayPDF(this)">
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="this.closest('div[style*=fixed]').remove();document.querySelectorAll('.act-btn').forEach(function(b){if(b.textContent==='Review...')b.textContent='Create Monday job';b.disabled=false;})" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">Cancel</button>
+        <button onclick="confirmMondayCreate(this)" style="padding:8px 16px;border-radius:6px;border:none;background:var(--navy);color:white;cursor:pointer;font-size:12px;font-weight:600">Create in Monday →</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('mj-market').value = market;
+  // Store email data for filing after Monday creation
+  _pendingMondayEmail = { id: emailData.id, from: emailData.from, subject: emailData.subject };
+  overlay.addEventListener('click', function(ev) { if (ev.target === overlay) { overlay.remove(); originalBtn.textContent = 'Create Monday job'; originalBtn.disabled = false; } });
+}
+
+async function extractMondayPDF(fileInput) {
+  var file = fileInput.files[0];
+  if (!file) return;
+
+  var status = fileInput.parentElement.querySelector('.mj-pdf-status');
+  if (!status) {
+    status = document.createElement('div');
+    status.className = 'mj-pdf-status';
+    status.style.cssText = 'font-size:11px;color:var(--teal);margin-top:6px;font-weight:500';
+    fileInput.parentElement.appendChild(status);
+  }
+  status.textContent = 'Extracting from PDF...';
+
+  try {
+    var base64 = await new Promise(function(res, rej) {
+      var r = new FileReader();
+      r.onload = function() { res(r.result.split(',')[1]); };
+      r.onerror = function() { rej(new Error('Read failed')); };
+      r.readAsDataURL(file);
+    });
+
+    var mediaType = file.type || 'application/pdf';
+    var isPdf = file.type === 'application/pdf';
+    var content = isPdf
+      ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 }, citations: { enabled: false } },
+         { type: 'text', text: 'Extract job details from this Eridion Glass Work Order. Return ONLY JSON: {"address":"Customer Ref / job address","builder":"client name from For: field","internalJob":"Work Order number","scope":"description of work","amount":0,"po":"client PO number","installDate":"YYYY-MM-DD from Required By","poDate":"YYYY-MM-DD from Date"}' }]
+      : [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+         { type: 'text', text: 'Extract job details from this Eridion Glass Work Order. Return ONLY JSON: {"address":"Customer Ref / job address","builder":"client name from For: field","internalJob":"Work Order number","scope":"description of work","amount":0,"po":"client PO number","installDate":"YYYY-MM-DD from Required By","poDate":"YYYY-MM-DD from Date"}' }];
+
+    var res = await fetch(`${WORKER_URL}/api/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: content }] })
+    });
+    var data = await res.json();
+    var raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+    var parsed = {};
+    try { parsed = JSON.parse(raw); } catch(pe) {}
+
+    // Fill in the form fields
+    if (parsed.address) document.getElementById('mj-address').value = parsed.address;
+    if (parsed.builder) document.getElementById('mj-builder').value = parsed.builder;
+    if (parsed.internalJob) document.getElementById('mj-internal').value = parsed.internalJob;
+    if (parsed.amount) document.getElementById('mj-amount').value = parsed.amount;
+    if (parsed.po) document.getElementById('mj-po').value = parsed.po;
+    if (parsed.installDate) document.getElementById('mj-install').value = parsed.installDate;
+    if (parsed.scope) document.getElementById('mj-scope').value = parsed.scope;
+
+    status.textContent = '✓ Extracted from ' + file.name;
+    status.style.color = 'var(--green)';
+  } catch(err) {
+    status.textContent = 'Could not extract — fill in manually';
+    status.style.color = 'var(--red)';
+    console.error(err);
+  }
+}
+
+async function confirmMondayCreate(btn) {
+  var address = document.getElementById('mj-address').value.trim();
+  if (!address) { alert('Job address is required — this becomes the Name in Monday.'); return; }
+
+  btn.textContent = 'Creating...';
+  btn.disabled = true;
+
+  // PM + Measurer based on market
+  var market = document.getElementById('mj-market').value;
+  var pm = 'Dion Harrison';
+  var pmEmail = 'dion@eridionglass.com';
+  var measurer, measurerEmail;
+  if (market === 'littlerock') {
+    measurer = 'Ryan Gordano';
+    measurerEmail = 'citizensglassman@gmail.com'; // UPDATE if different
+  } else {
+    measurer = 'Dion Harrison';
+    measurerEmail = 'dion@eridionglass.com';
+  }
+
+  try {
+    var res = await fetch(`${WORKER_URL}/monday/create-job`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: jobName,
-        builder: builder,
-        poAmt: amount,
-        jobItems: scope,
-        clientPO: po,
+        name: address,
+        builder: document.getElementById('mj-builder').value.trim(),
+        poAmt: parseFloat(document.getElementById('mj-amount').value) || 0,
+        jobItems: document.getElementById('mj-scope').value.trim(),
+        clientPO: document.getElementById('mj-po').value.trim(),
+        internalJob: document.getElementById('mj-internal').value.trim(),
+        installDate: document.getElementById('mj-install').value,
+        poDate: new Date().toISOString().split('T')[0],
+        pm: pm,
+        pmEmail: pmEmail,
+        measurer: measurer,
+        measurerEmail: measurerEmail,
       })
     });
-    const data = await res.json();
+    var data = await res.json();
 
     if (data.action === 'job_created') {
-      btn.textContent = '✓ Created in Monday!';
-      btn.style.background = 'var(--green)';
-      btn.style.borderColor = 'var(--green)';
-      btn.style.color = 'white';
+      var builderName = document.getElementById('mj-builder').value.trim();
+
+      // ── File the entire email thread in Outlook → Builders/{Builder}/{Address} ──
+      btn.textContent = 'Filing emails...';
+      var fileCount = 0;
+      try {
+        if (_pendingMondayEmail && _pendingMondayEmail.id) {
+          var fileRes = await fetch(`${WORKER_URL}/file-thread`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              emailId: _pendingMondayEmail.id,
+              builderName: builderName,
+              jobAddress: address,
+            })
+          });
+          var fileData = await fileRes.json();
+          fileCount = fileData.moved || 0;
+        }
+      } catch(fe) { console.log('Thread filing failed:', fe); }
+
+      _pendingMondayEmail = null;
+      btn.closest('div[style*="fixed"]').remove();
+      var successMsg = '✓ Created + ' + (fileCount > 0 ? fileCount + ' emails filed!' : 'Filed!');
+      document.querySelectorAll('.act-btn').forEach(function(b) {
+        if (b.textContent === 'Review...' || b.textContent === 'Filing emails...' || b.textContent === 'Filing email...') {
+          b.textContent = successMsg;
+          b.style.background = 'var(--green)';
+          b.style.borderColor = 'var(--green)';
+          b.style.color = 'white';
+        }
+      });
     } else {
-      btn.textContent = '⚠ ' + (data.error || 'Failed');
-      btn.style.color = 'var(--amber)';
+      btn.textContent = '⚠ ' + (data.error || JSON.stringify(data.errors || 'Failed'));
       btn.disabled = false;
     }
   } catch(err) {
     btn.textContent = 'Error — try again';
     btn.disabled = false;
-    console.error('Monday create error:', err);
+    console.error(err);
   }
 }
 
