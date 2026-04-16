@@ -1537,10 +1537,14 @@ function showMondayPreview(parsed, emailData, pdfName, originalBtn) {
         <input type="text" id="mj-scope" value="${esc(scope)}" placeholder="e.g. Supply & Install Primary Bath Mirrors" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit">
       </div>
 
-      <div style="background:var(--cream);border-radius:8px;padding:12px;margin-bottom:16px">
-        <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">📎 Upload Work Order PDF (optional)</div>
-        <div style="font-size:11px;color:var(--text-2);margin-bottom:8px">If the email didn't have enough detail, upload the Work Order PDF to extract all fields.</div>
-        <input type="file" id="mj-pdf-upload" accept=".pdf,.png,.jpg,.jpeg" style="font-size:12px" onchange="extractMondayPDF(this)">
+      <div id="mj-drop-zone" style="background:var(--cream);border-radius:8px;padding:16px;margin-bottom:16px;border:2px dashed var(--border);cursor:pointer;transition:all .15s;text-align:center"
+        ondragover="event.preventDefault();this.style.borderColor='var(--green)';this.style.background='#E8F5E8'"
+        ondragleave="this.style.borderColor='var(--border)';this.style.background='var(--cream)'"
+        ondrop="event.preventDefault();this.style.borderColor='var(--border)';this.style.background='var(--cream)';if(event.dataTransfer.files[0])extractMondayPDF({files:event.dataTransfer.files,parentElement:this})"
+        onclick="document.getElementById('mj-pdf-upload').click()">
+        <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">📎 Drop Work Order PDF here or click to browse</div>
+        <div style="font-size:11px;color:var(--text-2)">Drag your Work Order, PO, or quote to auto-fill all fields</div>
+        <input type="file" id="mj-pdf-upload" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="extractMondayPDF(this)">
       </div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -1687,13 +1691,21 @@ async function confirmMondayCreate(btn) {
         }
       });
     } else {
-      btn.textContent = '⚠ ' + (data.error || JSON.stringify(data.errors || 'Failed'));
+      console.error('Monday create response:', JSON.stringify(data));
+      var errMsg = 'Failed';
+      try {
+        if (typeof data.error === 'string') errMsg = data.error.substring(0, 120);
+        else if (typeof data.error === 'object') errMsg = JSON.stringify(data.error).substring(0, 120);
+        else errMsg = JSON.stringify(data).substring(0, 120);
+      } catch(pe) { errMsg = 'Unknown error — check console'; }
+      btn.textContent = '⚠ ' + errMsg;
+      btn.style.fontSize = '10px';
       btn.disabled = false;
     }
   } catch(err) {
     btn.textContent = 'Error — try again';
     btn.disabled = false;
-    console.error(err);
+    console.error('Monday create error:', err);
   }
 }
 
