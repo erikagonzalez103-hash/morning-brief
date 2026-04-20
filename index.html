@@ -118,6 +118,40 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 .tag-casaverde{background:#EAF5EE;color:var(--green);}
 .tag-herdallas{background:var(--purple-soft);color:var(--purple);}
 
+/* RECEIVABLES AGGREGATION */
+.recv-summary{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;background:linear-gradient(180deg,#FAFFFB 0%,#F2FAF4 100%);}
+.recv-summary:hover{background:#EAF5EE;}
+.recv-headline{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;}
+.recv-total{font-family:'DM Serif Display',serif;font-size:26px;color:var(--green);line-height:1;}
+.recv-meta{font-size:12px;color:var(--text-2);}
+.recv-meta strong{color:var(--text);font-weight:600;}
+.recv-toggle{font-size:11px;font-weight:600;color:var(--green);text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:6px;user-select:none;}
+.recv-toggle .chev{transition:transform .15s;display:inline-block;}
+.recv-section.open .recv-toggle .chev{transform:rotate(90deg);}
+.recv-groups{display:none;border-top:1px solid var(--cream-dark);}
+.recv-section.open .recv-groups{display:block;}
+.recv-group{border-bottom:1px solid var(--cream-dark);}
+.recv-group:last-child{border-bottom:none;}
+.recv-group-head{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer;transition:background .12s;}
+.recv-group-head:hover{background:var(--cream);}
+.recv-group.open .recv-group-head{background:#F0F4FF;}
+.recv-builder{font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;}
+.recv-builder .chev{font-size:10px;color:var(--text-3);transition:transform .15s;}
+.recv-group.open .recv-builder .chev{transform:rotate(90deg);}
+.recv-group-stats{font-size:12px;color:var(--text-2);display:flex;gap:14px;align-items:center;}
+.recv-group-stats .amt{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;}
+.recv-group-stats .age{font-size:11px;color:var(--amber);font-weight:600;}
+.recv-group-stats .age.fresh{color:var(--text-3);}
+.recv-group-stats .age.overdue{color:var(--red);}
+.recv-jobs{display:none;background:#FCFCFD;}
+.recv-group.open .recv-jobs{display:block;}
+.recv-job{padding:9px 16px 9px 38px;border-top:1px solid var(--cream-dark);display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:12px;}
+.recv-job-info{flex:1;min-width:0;}
+.recv-job-addr{font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.recv-job-sub{font-size:11px;color:var(--text-3);margin-top:2px;}
+.recv-job-amt{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;flex-shrink:0;}
+.recv-empty{padding:20px 16px;text-align:center;color:var(--text-3);font-size:12px;}
+
 /* EXPANDED */
 .email-expanded{display:none;padding:10px 16px 12px 58px;border-bottom:1px solid var(--cream-dark);background:#F9FAFF;}
 .email-item.open + .email-expanded{display:block;}
@@ -456,11 +490,25 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
 
   <div id="friday-banner" style="display:none"></div>
   <div class="stats">
+    <div class="stat good" onclick="scroll2('receivables-section')"><div class="stat-num" id="s-recv-amt" style="color:var(--green)">—</div><div class="stat-label">Outstanding $</div></div>
     <div class="stat urgent" onclick="scroll2('priority-section')"><div class="stat-num is-red" id="s-priority">—</div><div class="stat-label">Act today</div></div>
     <div class="stat warn" onclick="scroll2('stale-section')"><div class="stat-num is-amber" id="s-stale">—</div><div class="stat-label">Stale &gt;24h</div></div>
     <div class="stat info" onclick="scroll2('vendors-section')"><div class="stat-num" id="s-vendors">—</div><div class="stat-label">Vendor docs</div></div>
     <div class="stat sub" onclick="scroll2('subs-section')"><div class="stat-num is-purple" id="s-subs">—</div><div class="stat-label">Sub invoices</div></div>
     <div class="stat good" onclick="scroll2('inbox-section')"><div class="stat-num" id="s-inbox">—</div><div class="stat-label">New emails</div></div>
+  </div>
+
+  <div class="grid-full">
+    <div class="card recv-section" id="receivables-section">
+      <div class="recv-summary" onclick="document.getElementById('receivables-section').classList.toggle('open')">
+        <div class="recv-headline">
+          <div class="recv-total" id="recv-total">$0</div>
+          <div class="recv-meta"><strong id="recv-count">0</strong> invoices · <strong id="recv-builders">0</strong> builders · oldest <strong id="recv-oldest">—</strong></div>
+        </div>
+        <div class="recv-toggle"><span id="recv-toggle-label">View by company</span><span class="chev">›</span></div>
+      </div>
+      <div class="recv-groups" id="recv-groups"></div>
+    </div>
   </div>
 
   <div class="grid-full actions-section" id="actions-section" style="display:none">
@@ -640,10 +688,19 @@ function getDemoData() {
   };
   return {
     priority: [
-      { id:'demo-p1', from:'Roberto Salinas', subject:'Invoice #4821 — 14501 Stonebrook mirrors', preview:'Hi Erika, attached is the invoice for the mirror install at 14501 Stonebrook. Please confirm receipt.', type:'payment', tags:['invoice-sent','payment'], time:t(8,12), description:'14501 Stonebrook - mirrors', builder:'Grand Homes' },
+      // Receivables — these aggregate into the new "Outstanding receivables" card at the top
+      { id:'demo-p1', from:'Roberto Salinas', subject:'Invoice #4821 — 14501 Stonebrook mirrors', preview:'Hi Erika, attached is the invoice for the mirror install at 14501 Stonebrook. Please confirm receipt. Amount: $2,850.00', type:'payment', tags:['invoice-sent','payment'], time:t(8,12), description:'14501 Stonebrook - mirrors', builder:'Grand Homes', amount:2850, invoiceDate:new Date(Date.now()-12*86400000).toISOString() },
+      { id:'demo-p1b', from:'Eridion Glass AR', subject:'Invoice #4815 — 9820 Juniper Ridge shower enclosure', preview:'Invoice for $4,200.00 sent to Grand Homes for shower enclosure install at 9820 Juniper Ridge.', type:'payment', tags:['invoice-sent','payment'], time:t(7,55), description:'9820 Juniper Ridge - shower enclosure', builder:'Grand Homes', amount:4200, invoiceDate:new Date(Date.now()-22*86400000).toISOString() },
+      { id:'demo-p1c', from:'Eridion Glass AR', subject:'Invoice #4798 — 5501 Oakmont frameless glass', preview:'Invoice for $6,750.00 sent to Grand Homes — frameless glass at 5501 Oakmont.', type:'payment', tags:['invoice-sent','payment'], time:t(7,40), description:'5501 Oakmont - frameless glass', builder:'Grand Homes', amount:6750, invoiceDate:new Date(Date.now()-38*86400000).toISOString() },
+      { id:'demo-p1d', from:'Eridion Glass AR', subject:'Invoice #4810 — 12200 Preston Hollow primary bath', preview:'Invoice for $3,920.00 — Hines Homes — primary bath mirrors at 12200 Preston Hollow.', type:'payment', tags:['invoice-sent','payment'], time:t(7,32), description:'12200 Preston Hollow - primary bath', builder:'Hines Homes', amount:3920, invoiceDate:new Date(Date.now()-18*86400000).toISOString() },
+      { id:'demo-p1e', from:'Eridion Glass AR', subject:'Invoice #4801 — Frisco Town Center commercial storefront', preview:'Invoice for $11,400.00 — Hines Homes commercial storefront install.', type:'payment', tags:['invoice-sent','payment'], time:t(7,20), description:'Frisco Town Center - commercial storefront', builder:'Hines Homes', amount:11400, invoiceDate:new Date(Date.now()-29*86400000).toISOString() },
+      { id:'demo-p1f', from:'Eridion Glass AR', subject:'Invoice #4825 — 7710 Bluebonnet staircase glass', preview:'Invoice for $5,180.00 — Drees Homes — staircase glass railing at 7710 Bluebonnet.', type:'payment', tags:['invoice-sent','payment'], time:t(8,5), description:'7710 Bluebonnet - staircase glass', builder:'Drees Homes', amount:5180, invoiceDate:new Date(Date.now()-9*86400000).toISOString() },
+      { id:'demo-p1g', from:'Eridion Glass AR', subject:'Invoice #4807 — 14920 Bellflower interior glass', preview:'Invoice for $2,340.00 — Drees Homes — interior glass partition at 14920 Bellflower.', type:'payment', tags:['invoice-sent','payment'], time:t(8,2), description:'14920 Bellflower - interior glass', builder:'Drees Homes', amount:2340, invoiceDate:new Date(Date.now()-25*86400000).toISOString() },
+      { id:'demo-p1h', from:'Eridion Glass AR', subject:'Invoice #4818 — Conway model home shower glass', preview:'Invoice for $3,650.00 — Rausch Coleman — Conway model home shower glass.', type:'payment', tags:['invoice-sent','payment'], time:t(7,48), description:'Conway model home - shower glass', builder:'Rausch Coleman', amount:3650, invoiceDate:new Date(Date.now()-15*86400000).toISOString() },
+      // Non-receivable priority items — these stay in the Priority list
       { id:'demo-p2', from:'BuilderTrend Notification', subject:'Approval required: 9820 Juniper — shower enclosure PO', preview:'A new purchase order requires your approval in BuilderTrend. Job: 9820 Juniper Ridge.', type:'po', tags:['po','approve'], time:t(7,45), fromEmail:'notifications@buildertrend.net' },
       { id:'demo-p3', from:'Maria Chen', subject:'RE: Casa Verde bid — updated measurements', preview:'Erika, I updated the measurements for the storefront glass. Can you send a revised quote by EOD?', type:'bid', tags:['bid','casaverde'], time:t(9,30) },
-      { id:'demo-p4', from:'Zelle Notification', subject:'Payment received: $3,450.00 from Hines Homes', preview:'You received a Zelle payment of $3,450.00 from Hines Homes LLC.', type:'payment', tags:['ach','payment'], time:t(6,55) },
+      { id:'demo-p4', from:'Zelle Notification', subject:'Payment received: $3,450.00 from Hines Homes', preview:'You received a Zelle payment of $3,450.00 from Hines Homes LLC.', type:'payment', tags:['ach','payment'], time:t(6,55), builder:'Hines Homes', amount:3450 },
       { id:'demo-p5', from:'Tony Martinez', subject:'Reminder: Invoice overdue — 7710 Bluebonnet staircase railing', preview:'Hi Erika, just a reminder that our invoice for the staircase railing at 7710 Bluebonnet is now 15 days past due.', type:'urgent', tags:['urgent','sub-invoice'], time:t(8,40), paymentMethod:'Zelle' },
       { id:'demo-p6', from:'FHC Glass Supply', subject:'Order confirmation #FHC-29841 — tempered panels', preview:'Your order for 12x tempered glass panels has been confirmed. Estimated delivery: April 18.', type:'payment', tags:['payment','fhc'], time:t(7,20) },
     ],
@@ -1012,11 +1069,15 @@ function render(data){
   const snoozed = getSnoozedEmails();
   const notSnoozed = (item) => !snoozed[item.id];
 
-  const priority=(data.priority||[]).filter(notSnoozed);
+  const priorityAll=(data.priority||[]).filter(notSnoozed);
   const stale=(data.stale||[]).filter(notSnoozed);
   const vendorDocs=data.vendorDocs||[];
   const subInvoices=(data.subEmails||{}).invoices||[];
   const inbox=(data.inbox||[]).filter(notSnoozed);
+
+  // Split priority: receivables (invoices we sent, awaiting builder payment) get aggregated separately
+  const receivables = priorityAll.filter(isReceivable);
+  const priority = priorityAll.filter(item => !isReceivable(item));
 
   const builderDocs=vendorDocs.filter(d=>isBuilder(d));
   const vendorOnly=vendorDocs.filter(d=>!isBuilder(d));
@@ -1033,16 +1094,43 @@ function render(data){
   set('c-inbox',inbox.length);
   set('c-builders',builderDocs.length);
 
-  const total=priority.length+stale.length;
+  const total=priority.length+stale.length+receivables.length;
   document.getElementById('brief-sub').textContent=total>0?`${total} item${total!==1?'s':''} need your attention today.`:"You're all caught up. Great start to the day.";
 
   renderFridayBanner(data.fridayBanner);
+  renderReceivables(receivables);
   renderPriority(priority);
   renderStale(stale);
   renderVendors(vendorOnly);
   renderSubs(subInvoices);
   renderBuilders(builderDocs);
   renderInbox(inbox);
+}
+
+function isReceivable(item){
+  const tags = item.tags || [];
+  return tags.includes('invoice-sent') && !tags.includes('sub-invoice');
+}
+
+// Pull a dollar amount out of subject/preview if no item.amount field
+function parseAmount(item){
+  if (typeof item.amount === 'number' && item.amount > 0) return item.amount;
+  const text = `${item.subject||''} ${item.preview||''}`;
+  const m = text.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
+  return m ? parseFloat(m[1].replace(/,/g,'')) : 0;
+}
+
+function ageInDays(item){
+  // Try item.invoiceDate first, then item.time only if it's an ISO date, else null
+  const d = item.invoiceDate || item.dateISO;
+  if (!d) return null;
+  const ms = Date.now() - new Date(d).getTime();
+  return Math.floor(ms / 86400000);
+}
+
+function fmtMoney(n){
+  if (!n) return '$0';
+  return '$' + Math.round(n).toLocaleString('en-US');
 }
 
 function isBuilder(doc){
@@ -1058,6 +1146,120 @@ function avClass(type){
 
 function tagLabel(t){
   return {'sub-invoice':'Sub invoice','new_client':'New client','new_job':'New Job','change_order':'Change order','casaverde':'Casa Verde','herdallas':'HER Dallas'}[t]||(t||'').toUpperCase();
+}
+
+function renderReceivables(items){
+  const section = document.getElementById('receivables-section');
+  const groupsEl = document.getElementById('recv-groups');
+  if (!items.length){
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  // Group by builder (fallback to "from" sender's domain/name)
+  const groups = {};
+  items.forEach(item => {
+    const builder = (item.builder || item.from || 'Unknown').trim();
+    if (!groups[builder]) groups[builder] = { items: [], total: 0, oldestAge: null };
+    const amt = parseAmount(item);
+    groups[builder].items.push({ ...item, _amount: amt });
+    groups[builder].total += amt;
+    const age = ageInDays(item);
+    if (age !== null && (groups[builder].oldestAge === null || age > groups[builder].oldestAge)) {
+      groups[builder].oldestAge = age;
+    }
+  });
+
+  // Compute totals
+  const grandTotal = Object.values(groups).reduce((s,g) => s + g.total, 0);
+  const totalCount = items.length;
+  const builderCount = Object.keys(groups).length;
+  const oldestOverall = Object.values(groups).reduce((mx,g) => g.oldestAge !== null && g.oldestAge > (mx||-1) ? g.oldestAge : mx, null);
+
+  // Update headline
+  document.getElementById('recv-total').textContent = grandTotal > 0 ? fmtMoney(grandTotal) : `${totalCount} invoices`;
+  document.getElementById('recv-count').textContent = totalCount;
+  document.getElementById('recv-builders').textContent = builderCount;
+  document.getElementById('recv-oldest').textContent = oldestOverall !== null ? `${oldestOverall}d` : '—';
+  set('s-recv-amt', grandTotal > 0 ? fmtMoney(grandTotal).replace('$','$') : totalCount);
+
+  // Render builder groups, sorted by total desc (largest exposure first)
+  const sortedBuilders = Object.keys(groups).sort((a,b) => groups[b].total - groups[a].total);
+  groupsEl.innerHTML = sortedBuilders.map((builder, gi) => {
+    const g = groups[builder];
+    const ageClass = g.oldestAge === null ? 'fresh' : (g.oldestAge >= 30 ? 'overdue' : (g.oldestAge >= 14 ? '' : 'fresh'));
+    const ageLabel = g.oldestAge !== null ? `oldest ${g.oldestAge}d` : 'recent';
+    const jobsHtml = g.items.map(it => {
+      const _ci = cacheEmail(it);
+      const addr = it.description || it.subject || '(no description)';
+      const sub = `${it.from || ''}${it.time ? ' · ' + it.time : ''}`;
+      return `<div class="recv-job">
+        <div class="recv-job-info">
+          <div class="recv-job-addr">${esc(addr)}</div>
+          <div class="recv-job-sub">${esc(sub)}</div>
+        </div>
+        <div class="recv-job-amt">${it._amount > 0 ? fmtMoney(it._amount) : '—'}</div>
+        <button class="act-btn" style="font-size:11px;padding:3px 8px"
+          data-emailid="${esc(it.id||'')}"
+          data-builder="${esc(builder)}"
+          data-description="${esc(it.description||it.subject||'')}"
+          onclick="event.stopPropagation();markPaidInMonday(this,event)">Mark paid</button>
+      </div>`;
+    }).join('');
+    return `<div class="recv-group" id="recv-g${gi}">
+      <div class="recv-group-head" onclick="document.getElementById('recv-g${gi}').classList.toggle('open')">
+        <div class="recv-builder"><span class="chev">▸</span>${esc(builder)} <span style="color:var(--text-3);font-weight:400">(${g.items.length})</span></div>
+        <div class="recv-group-stats">
+          <span class="age ${ageClass}">${ageLabel}</span>
+          <span class="amt">${g.total > 0 ? fmtMoney(g.total) : '—'}</span>
+        </div>
+      </div>
+      <div class="recv-jobs">${jobsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+async function markPaidInMonday(btn, event){
+  if (event) event.stopPropagation();
+  const emailId = btn.getAttribute('data-emailid');
+  const builder = btn.getAttribute('data-builder');
+  const description = btn.getAttribute('data-description');
+
+  btn.textContent = 'Updating...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${WORKER_URL}/monday`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'PAYMENT_RECEIVED',
+        builder: builder || 'unknown',
+        address: description || '',
+        emailId: emailId || ''
+      })
+    });
+    const data = await res.json();
+    if (data.action === 'status_updated' || data.action === 'payment_marked') {
+      btn.textContent = '✓ Paid';
+      btn.style.background = 'var(--green)';
+      btn.style.borderColor = 'var(--green)';
+      btn.style.color = 'white';
+    } else if (data.action === 'multiple_matches') {
+      btn.textContent = `⚠ ${data.matches?.length || ''} matches`;
+      btn.style.color = 'var(--amber)';
+      btn.disabled = false;
+    } else {
+      btn.textContent = '⚠ No match';
+      btn.style.color = 'var(--amber)';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    btn.textContent = 'Error — retry';
+    btn.disabled = false;
+    console.error('markPaidInMonday error:', e);
+  }
 }
 
 function renderPriority(items){
@@ -1092,6 +1294,12 @@ function buildActions(item){
   const isBid = type==='bid'||type==='inquiry';
   const isOPEX = tags.includes('opex');
   const isSubInvoice = tags.includes('sub-invoice');
+  const isNewJob = type==='new_job' || type==='change_order' || tags.includes('new_job') || tags.includes('change_order');
+
+  // A "payment-related" item is one that touches an existing job's money flow,
+  // not a new-job creation event. For these we never want "Create Monday job"
+  // — we want a payment-status update on the existing job.
+  const isPaymentRelated = isInvoiceSent || isACH || isPayment || isSubInvoice;
 
   const _ci = cacheEmail(item);
 
@@ -1103,10 +1311,17 @@ function buildActions(item){
       data-description="${esc(item.description||item.subject||'')}"
       data-emailid="${esc(item.id||'')}"
       data-builder="${esc(item.builder||'Grand Homes')}"
-      onclick="handleInvoiceSent(this,event)">Update Monday + File email</button>`);
+      onclick="handleInvoiceSent(this,event)">Mark invoice sent in Monday + File</button>`);
 
   if(isACH)
-    btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to Profit First Ledger ↗</button>`);
+    btns.push(`<button class="act-btn primary" 
+      data-emailid="${esc(item.id||'')}"
+      data-builder="${esc(item.builder||item.from||'')}"
+      data-description="${esc(item.description||item.subject||'')}"
+      onclick="markPaidInMonday(this,event)">Mark paid in Monday</button>`);
+
+  if(isACH)
+    btns.push(`<button class="act-btn" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to Profit First Ledger ↗</button>`);
 
   if(isPayment && !isSubInvoice)
     btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/order-tracker/','_blank');event.stopPropagation()">Open order tracker ↗</button>`);
@@ -1123,7 +1338,13 @@ function buildActions(item){
   if(isOPEX)
     btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to OPEX Ledger ↗</button>`);
 
-  btns.push(`<button class="act-btn" style="color:var(--green);border-color:var(--green)" onclick="createMondayJob(${_ci},this,event)">Create Monday job</button>`);
+  // "Create Monday job" only for genuine new-job triggers (PO/WO, new job, change order)
+  // — never for payment-related emails (those update existing jobs).
+  // For truly unclassified items (no type, no tags), keep it as a manual override.
+  const isUnclassified = !type && tags.length === 0;
+  if(!isPaymentRelated && (isPO || isNewJob || isBid || isUnclassified))
+    btns.push(`<button class="act-btn" style="color:var(--green);border-color:var(--green)" onclick="createMondayJob(${_ci},this,event)">Create Monday job</button>`);
+
   btns.push(`<button class="act-btn" onclick="draftReply(${_ci},event)">Draft reply</button>`);
   btns.push(`<button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="taskFromCache(${_ci},event)">→ Task</button>`);
   btns.push(`<button class="act-btn" onclick="snoozeEmail('${esc(item.id)}',7,this,event)">Snooze 7d</button>`);
@@ -1255,7 +1476,7 @@ function renderInbox(items){
   const el=document.getElementById('inbox-list');
   if(!items.length){el.innerHTML='<div class="empty">Inbox is clear.</div>';return;}
   el.innerHTML=items.map((item,i)=>{
-    const _ii = cacheEmail(item);
+    const actions = buildActions(item);
     return `
     <div class="email-item" id="ix${i}" onclick="toggleItem('ix${i}')">
       <div class="avatar av-navy">${initials(item.from)}</div>
@@ -1266,7 +1487,7 @@ function renderInbox(items){
       </div>
     </div>
     <div class="email-expanded" id="exp-ix${i}">
-      <div class="action-row"><button class="act-btn primary" onclick="draftReply(${_ii},event)">Draft reply</button><button class="act-btn" style="color:var(--green);border-color:var(--green)" onclick="createMondayJob(${_ii},this,event)">Create Monday job</button><button class="act-btn" style="color:var(--teal);border-color:var(--teal)" onclick="taskFromCache(${_ii},event)">→ Task</button><button class="act-btn" onclick="snoozeEmail('${esc(item.id)}',7,this,event)">Snooze 7d</button></div>
+      <div class="action-row">${actions}</div>
     </div>`;
   }).join('');
 }
