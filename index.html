@@ -118,6 +118,30 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 .tag-casaverde{background:#EAF5EE;color:var(--green);}
 .tag-herdallas{background:var(--purple-soft);color:var(--purple);}
 
+/* ACTION GROUPING (Francisco Acted by vendor) */
+.actions-summary{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--cream);border-bottom:1px solid var(--cream-dark);font-size:12px;color:var(--text-2);}
+.actions-summary strong{color:var(--text);font-weight:600;}
+.actions-view-toggle{display:flex;gap:4px;font-size:11px;}
+.actions-view-toggle button{padding:3px 10px;border:1px solid var(--border);background:var(--white);color:var(--text-2);border-radius:5px;cursor:pointer;font-size:11px;font-weight:500;}
+.actions-view-toggle button.active{background:var(--navy);color:var(--white);border-color:var(--navy);}
+.action-group{border-bottom:1px solid var(--cream-dark);}
+.action-group:last-child{border-bottom:none;}
+.action-group-head{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer;transition:background .12s;background:var(--white);}
+.action-group-head:hover{background:var(--cream);}
+.action-group.open .action-group-head{background:#F0F4FF;}
+.action-group-name{font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;}
+.action-group-name .chev{font-size:10px;color:var(--text-3);transition:transform .15s;}
+.action-group.open .action-group-name .chev{transform:rotate(90deg);}
+.action-group-name .gcount{color:var(--text-3);font-weight:400;}
+.action-group-stats{font-size:12px;color:var(--text-2);display:flex;gap:14px;align-items:center;}
+.action-group-stats .amt{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;}
+.action-group-stats .age{font-size:11px;font-weight:600;}
+.action-group-stats .age.overdue{color:var(--red);}
+.action-group-stats .age.warn{color:var(--amber);}
+.action-group-stats .age.fresh{color:var(--text-3);}
+.action-group-items{display:none;background:#FCFCFD;}
+.action-group.open .action-group-items{display:block;}
+
 /* RECEIVABLES AGGREGATION */
 .recv-summary{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;background:linear-gradient(180deg,#FAFFFB 0%,#F2FAF4 100%);}
 .recv-summary:hover{background:#EAF5EE;}
@@ -798,6 +822,7 @@ function getDemoActions() {
 }
 
 function renderActions(actions) {
+  window._lastActions = actions;
   const section = document.getElementById('actions-section');
   const list = document.getElementById('actions-list');
   const count = document.getElementById('c-actions');
@@ -810,6 +835,127 @@ function renderActions(actions) {
   section.style.display = 'block';
   if (count) count.textContent = actions.length;
 
+  // Decide layout: if >8 items AND ≥2 distinct vendor groups can be parsed, default to grouped
+  const groups = groupActions(actions);
+  const groupKeys = Object.keys(groups);
+  const meaningfulGrouping = actions.length > 8 && groupKeys.filter(k => k !== 'Other').length >= 2;
+  const view = window._actionsView || (meaningfulGrouping ? 'grouped' : 'flat');
+  window._actionsView = view;
+
+  // Compute aggregate stats
+  const totalAmount = actions.reduce((s,a) => s + extractActionAmount(a), 0);
+  const oldestAge = actions.reduce((mx,a) => {
+    const age = extractActionAge(a);
+    return age !== null && (mx === null || age > mx) ? age : mx;
+  }, null);
+  const vendorCount = groupKeys.filter(k => k !== 'Other').length;
+
+  // Build summary band (only when grouping is meaningful)
+  let summaryHtml = '';
+  if (meaningfulGrouping) {
+    const amtTxt = totalAmount > 0 ? `<strong>${fmtMoney(totalAmount)}</strong> across ` : '';
+    const ageTxt = oldestAge !== null ? ` · oldest <strong>${oldestAge}d</strong>` : '';
+    summaryHtml = `<div class="actions-summary">
+      <div>${amtTxt}<strong>${actions.length}</strong> actions · <strong>${vendorCount}</strong> vendors${ageTxt}</div>
+      <div class="actions-view-toggle">
+        <button class="${view==='grouped'?'active':''}" onclick="setActionsView('grouped')">By vendor</button>
+        <button class="${view==='flat'?'active':''}" onclick="setActionsView('flat')">Flat</button>
+      </div>
+    </div>`;
+  }
+
+  // Render body
+  let bodyHtml = '';
+  if (view === 'grouped') {
+    // Sort groups: largest $ first, then largest count, "Other" always last
+    const sortedKeys = groupKeys.sort((a,b) => {
+      if (a === 'Other') return 1;
+      if (b === 'Other') return -1;
+      const aTotal = groups[a].reduce((s,x) => s + extractActionAmount(x), 0);
+      const bTotal = groups[b].reduce((s,x) => s + extractActionAmount(x), 0);
+      if (bTotal !== aTotal) return bTotal - aTotal;
+      return groups[b].length - groups[a].length;
+    });
+    bodyHtml = sortedKeys.map((vendor, gi) => {
+      const items = groups[vendor];
+      const gTotal = items.reduce((s,x) => s + extractActionAmount(x), 0);
+      const gOldest = items.reduce((mx,x) => {
+        const age = extractActionAge(x);
+        return age !== null && (mx === null || age > mx) ? age : mx;
+      }, null);
+      const ageClass = gOldest === null ? 'fresh' : (gOldest >= 30 ? 'overdue' : (gOldest >= 14 ? 'warn' : 'fresh'));
+      const ageLabel = gOldest !== null ? `oldest ${gOldest}d` : 'recent';
+      const itemsHtml = items.map(renderActionItem).join('');
+      return `<div class="action-group" id="ag-${gi}">
+        <div class="action-group-head" onclick="document.getElementById('ag-${gi}').classList.toggle('open')">
+          <div class="action-group-name"><span class="chev">▸</span>${esc(vendor)} <span class="gcount">(${items.length})</span></div>
+          <div class="action-group-stats">
+            <span class="age ${ageClass}">${ageLabel}</span>
+            <span class="amt">${gTotal > 0 ? fmtMoney(gTotal) : ''}</span>
+          </div>
+        </div>
+        <div class="action-group-items">${itemsHtml}</div>
+      </div>`;
+    }).join('');
+  } else {
+    bodyHtml = actions.map(renderActionItem).join('');
+  }
+
+  list.innerHTML = summaryHtml + bodyHtml;
+}
+
+function setActionsView(view) {
+  window._actionsView = view;
+  if (window._lastActions) renderActions(window._lastActions);
+}
+
+// Extract a vendor/company name from an action's title.
+// Pattern: "FHC — 26053-2 is overdue" → "FHC"
+//          "Invoice #4821 filed to Grand Homes → 14501 Stonebrook" → "Grand Homes"
+function extractActionCompany(action) {
+  const t = action.title || '';
+  // Pattern 1: leading shortcode before em-dash/hyphen ("FHC — ...", "IMP - ...")
+  const m1 = t.match(/^([A-Z][A-Za-z0-9&. ]{1,30}?)\s*[—–\-]\s*/);
+  if (m1) return m1[1].trim();
+  // Pattern 2: "filed to <Company>" or "to <Company> →"
+  const m2 = t.match(/(?:filed to|sent to|paid to|from|for)\s+([A-Z][A-Za-z0-9&. ]+?)(?:\s+→|\s*$|\s+—)/);
+  if (m2) return m2[1].trim();
+  return 'Other';
+}
+
+function extractActionAmount(action) {
+  const text = `${action.detail || ''} ${action.title || ''}`;
+  const m = text.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
+  return m ? parseFloat(m[1].replace(/,/g,'')) : 0;
+}
+
+function extractActionAge(action) {
+  // Try to parse a "Due: YYYY-MM-DD" from detail, fallback to timestamp age
+  const text = action.detail || '';
+  const dueMatch = text.match(/Due:\s*(\d{4}-\d{2}-\d{2})/);
+  if (dueMatch) {
+    const dueMs = new Date(dueMatch[1]).getTime();
+    const ageMs = Date.now() - dueMs;
+    return Math.floor(ageMs / 86400000);
+  }
+  if (action.timestamp) {
+    const ageMs = Date.now() - new Date(action.timestamp).getTime();
+    return Math.floor(ageMs / 86400000);
+  }
+  return null;
+}
+
+function groupActions(actions) {
+  const out = {};
+  actions.forEach(a => {
+    const k = extractActionCompany(a);
+    if (!out[k]) out[k] = [];
+    out[k].push(a);
+  });
+  return out;
+}
+
+function renderActionItem(a) {
   const iconMap = {
     monday_status_update: { icon: '📋', cls: 'ai-monday' },
     invoice_logged: { icon: '🧾', cls: 'ai-invoice' },
@@ -821,36 +967,33 @@ function renderActions(actions) {
     winback_flag: { icon: '👋', cls: 'ai-teal' },
     winback_escalate: { icon: '🔄', cls: 'ai-po' },
   };
-
-  list.innerHTML = actions.map(a => {
-    const ic = iconMap[a.type] || { icon: '🤖', cls: 'ai-monday' };
-    const time = a.timestamp ? new Date(a.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
-    return `
-      <div class="action-item" id="act-${esc(a.id)}">
-        <div class="action-icon ${ic.cls}">${ic.icon}</div>
-        <div class="action-body">
-          <div class="action-title">${esc(a.title)}${a.urgent ? ' 🔴' : ''}${a.forDion ? ' <span style="font-size:10px;background:#EEF2FF;color:var(--navy);padding:1px 6px;border-radius:10px;font-weight:600">DION</span>' : ''}${a.winbackStage === 'crm_escalate' ? ' <span style="font-size:10px;background:var(--red-soft);color:var(--red);padding:1px 6px;border-radius:10px;font-weight:600">CRM</span>' : ''}</div>
-          <div class="action-detail">${esc(a.detail || '')}</div>
-          ${a.followUp ? `<div class="action-followup">→ ${esc(a.followUp)}</div>` : ''}
-          ${a.winbackStage === 'flag' ? `<button onclick="draftCheckin('${esc(a.winbackContact)}','${esc(a.id)}',event)" style="margin-top:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--teal);background:var(--teal-soft);color:var(--teal);cursor:pointer">✍ Draft check-in</button>` : ''}
-          ${a.winbackStage === 'crm_escalate' ? `<button onclick="window.open('https://erikagonzalez103-hash.github.io/crm/','_blank')" style="margin-top:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--red);background:var(--red-soft);color:var(--red);cursor:pointer">→ Open CRM</button>` : ''}
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-          <div class="action-time">${time}</div>
-          <button class="action-dismiss" onclick="dismissAction('${esc(a.id)}')">✓ Done</button>
-          <div style="position:relative;display:inline-block">
-            <button class="action-dismiss" style="color:var(--amber);border-color:var(--amber)" onclick="toggleSnooze('${esc(a.id)}', event)">⏱ Snooze</button>
-            <div id="snooze-${esc(a.id)}" onclick="event.stopPropagation()" style="display:none;position:fixed;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:9999;min-width:130px;overflow:hidden">
-              <div style="padding:4px 0">
-                <button onmousedown="doSnooze('${esc(a.id)}',3,event)" style="width:100%;padding:8px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text);transition:background .1s" onmouseover="this.style.background='var(--cream)'" onmouseout="this.style.background='none'">3 days</button>
-                <button onmousedown="doSnooze('${esc(a.id)}',7,event)" style="width:100%;padding:8px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text);transition:background .1s" onmouseover="this.style.background='var(--cream)'" onmouseout="this.style.background='none'">7 days</button>
-                <button onmousedown="doSnooze('${esc(a.id)}',14,event)" style="width:100%;padding:8px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text);transition:background .1s" onmouseover="this.style.background='var(--cream)'" onmouseout="this.style.background='none'">14 days</button>
-              </div>
+  const ic = iconMap[a.type] || { icon: '🤖', cls: 'ai-monday' };
+  const time = a.timestamp ? new Date(a.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+  return `
+    <div class="action-item" id="act-${esc(a.id)}">
+      <div class="action-icon ${ic.cls}">${ic.icon}</div>
+      <div class="action-body">
+        <div class="action-title">${esc(a.title)}${a.urgent ? ' 🔴' : ''}${a.forDion ? ' <span style="font-size:10px;background:#EEF2FF;color:var(--navy);padding:1px 6px;border-radius:10px;font-weight:600">DION</span>' : ''}${a.winbackStage === 'crm_escalate' ? ' <span style="font-size:10px;background:var(--red-soft);color:var(--red);padding:1px 6px;border-radius:10px;font-weight:600">CRM</span>' : ''}</div>
+        <div class="action-detail">${esc(a.detail || '')}</div>
+        ${a.followUp ? `<div class="action-followup">→ ${esc(a.followUp)}</div>` : ''}
+        ${a.winbackStage === 'flag' ? `<button onclick="draftCheckin('${esc(a.winbackContact)}','${esc(a.id)}',event)" style="margin-top:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--teal);background:var(--teal-soft);color:var(--teal);cursor:pointer">✍ Draft check-in</button>` : ''}
+        ${a.winbackStage === 'crm_escalate' ? `<button onclick="window.open('https://erikagonzalez103-hash.github.io/crm/','_blank')" style="margin-top:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--red);background:var(--red-soft);color:var(--red);cursor:pointer">→ Open CRM</button>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        <div class="action-time">${time}</div>
+        <button class="action-dismiss" onclick="dismissAction('${esc(a.id)}')">✓ Done</button>
+        <div style="position:relative;display:inline-block">
+          <button class="action-dismiss" style="color:var(--amber);border-color:var(--amber)" onclick="toggleSnooze('${esc(a.id)}', event)">⏱ Snooze</button>
+          <div id="snooze-${esc(a.id)}" onclick="event.stopPropagation()" style="display:none;position:fixed;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:9999;min-width:130px;overflow:hidden">
+            <div style="padding:4px 0">
+              <button onmousedown="doSnooze('${esc(a.id)}',3,event)" style="width:100%;padding:8px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text);transition:background .1s" onmouseover="this.style.background='var(--cream)'" onmouseout="this.style.background='none'">3 days</button>
+              <button onmousedown="doSnooze('${esc(a.id)}',7,event)" style="width:100%;padding:8px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text);transition:background .1s" onmouseover="this.style.background='var(--cream)'" onmouseout="this.style.background='none'">7 days</button>
+              <button onmousedown="doSnooze('${esc(a.id)}',14,event)" style="width:100%;padding:8px 14px;text-align:left;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text);transition:background .1s" onmouseover="this.style.background='var(--cream)'" onmouseout="this.style.background='none'">14 days</button>
             </div>
           </div>
         </div>
-      </div>`;
-  }).join('');
+      </div>
+    </div>`;
 }
 
 async function dismissAction(actionId) {
