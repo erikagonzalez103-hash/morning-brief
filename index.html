@@ -118,6 +118,49 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 .tag-casaverde{background:#EAF5EE;color:var(--green);}
 .tag-herdallas{background:var(--purple-soft);color:var(--purple);}
 
+/* CASH-FLOW CARD HEADERS (A/R vs A/P distinction) */
+.cf-header{padding:10px 16px 8px;border-bottom:1px solid var(--cream-dark);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.cf-header-title{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-2);}
+.cf-header-title .cf-icon{font-size:14px;}
+.cf-header-title .cf-dir{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;letter-spacing:.04em;}
+.cf-dir-in{background:#EAF5EE;color:var(--green);}
+.cf-dir-out{background:var(--red-soft);color:var(--red);}
+
+/* PAYABLES AGGREGATION (mirrors receivables but red accent) */
+.pay-section{display:none;}
+.pay-section.visible{display:block;}
+.pay-summary{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;background:linear-gradient(180deg,#FFFAFA 0%,#FCF2F2 100%);}
+.pay-summary:hover{background:#FDECEC;}
+.pay-headline{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;}
+.pay-total{font-family:'DM Serif Display',serif;font-size:26px;color:var(--red);line-height:1;}
+.pay-meta{font-size:12px;color:var(--text-2);}
+.pay-meta strong{color:var(--text);font-weight:600;}
+.pay-toggle{font-size:11px;font-weight:600;color:var(--red);text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:6px;user-select:none;}
+.pay-toggle .chev{transition:transform .15s;display:inline-block;}
+.pay-section.open .pay-toggle .chev{transform:rotate(90deg);}
+.pay-groups{display:none;border-top:1px solid var(--cream-dark);}
+.pay-section.open .pay-groups{display:block;}
+.pay-group{border-bottom:1px solid var(--cream-dark);}
+.pay-group:last-child{border-bottom:none;}
+.pay-group-head{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer;transition:background .12s;}
+.pay-group-head:hover{background:var(--cream);}
+.pay-group.open .pay-group-head{background:#FDECEC;}
+.pay-vendor{font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;}
+.pay-vendor .chev{font-size:10px;color:var(--text-3);transition:transform .15s;}
+.pay-group.open .pay-vendor .chev{transform:rotate(90deg);}
+.pay-group-stats{font-size:12px;color:var(--text-2);display:flex;gap:14px;align-items:center;}
+.pay-group-stats .amt{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;}
+.pay-group-stats .age{font-size:11px;color:var(--amber);font-weight:600;}
+.pay-group-stats .age.fresh{color:var(--text-3);}
+.pay-group-stats .age.overdue{color:var(--red);}
+.pay-bills{display:none;background:#FCFCFD;}
+.pay-group.open .pay-bills{display:block;}
+.pay-bill{padding:9px 16px 9px 38px;border-top:1px solid var(--cream-dark);display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:12px;}
+.pay-bill-info{flex:1;min-width:0;}
+.pay-bill-ref{font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pay-bill-sub{font-size:11px;color:var(--text-3);margin-top:2px;}
+.pay-bill-amt{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;flex-shrink:0;}
+
 /* ACTION GROUPING (Francisco Acted by vendor) */
 .actions-summary{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--cream);border-bottom:1px solid var(--cream-dark);font-size:12px;color:var(--text-2);}
 .actions-summary strong{color:var(--text);font-weight:600;}
@@ -514,16 +557,23 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
 
   <div id="friday-banner" style="display:none"></div>
   <div class="stats">
-    <div class="stat good" onclick="scroll2('receivables-section')"><div class="stat-num" id="s-recv-amt" style="color:var(--green)">—</div><div class="stat-label">Outstanding $</div></div>
+    <div class="stat good" onclick="scroll2('receivables-section')"><div class="stat-num" id="s-recv-amt" style="color:var(--green)">—</div><div class="stat-label">Money in (A/R)</div></div>
+    <div class="stat urgent" onclick="scroll2('payables-section')"><div class="stat-num" id="s-pay-amt" style="color:var(--red)">—</div><div class="stat-label">Money out (A/P)</div></div>
     <div class="stat urgent" onclick="scroll2('priority-section')"><div class="stat-num is-red" id="s-priority">—</div><div class="stat-label">Act today</div></div>
     <div class="stat warn" onclick="scroll2('stale-section')"><div class="stat-num is-amber" id="s-stale">—</div><div class="stat-label">Stale &gt;24h</div></div>
-    <div class="stat info" onclick="scroll2('vendors-section')"><div class="stat-num" id="s-vendors">—</div><div class="stat-label">Vendor docs</div></div>
     <div class="stat sub" onclick="scroll2('subs-section')"><div class="stat-num is-purple" id="s-subs">—</div><div class="stat-label">Sub invoices</div></div>
     <div class="stat good" onclick="scroll2('inbox-section')"><div class="stat-num" id="s-inbox">—</div><div class="stat-label">New emails</div></div>
   </div>
 
   <div class="grid-full">
     <div class="card recv-section" id="receivables-section">
+      <div class="cf-header">
+        <div class="cf-header-title">
+          <span class="cf-icon">💰</span>
+          <span>Receivables — invoices owed to you</span>
+          <span class="cf-dir cf-dir-in">Money in</span>
+        </div>
+      </div>
       <div class="recv-summary" onclick="document.getElementById('receivables-section').classList.toggle('open')">
         <div class="recv-headline">
           <div class="recv-total" id="recv-total">$0</div>
@@ -532,6 +582,26 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
         <div class="recv-toggle"><span id="recv-toggle-label">View by company</span><span class="chev">›</span></div>
       </div>
       <div class="recv-groups" id="recv-groups"></div>
+    </div>
+  </div>
+
+  <div class="grid-full">
+    <div class="card pay-section" id="payables-section">
+      <div class="cf-header">
+        <div class="cf-header-title">
+          <span class="cf-icon">💸</span>
+          <span>Payables — bills you owe vendors</span>
+          <span class="cf-dir cf-dir-out">Money out</span>
+        </div>
+      </div>
+      <div class="pay-summary" onclick="document.getElementById('payables-section').classList.toggle('open')">
+        <div class="pay-headline">
+          <div class="pay-total" id="pay-total">$0</div>
+          <div class="pay-meta"><strong id="pay-count">0</strong> bills · <strong id="pay-vendors">0</strong> vendors · oldest <strong id="pay-oldest">—</strong></div>
+        </div>
+        <div class="pay-toggle"><span>View by vendor</span><span class="chev">›</span></div>
+      </div>
+      <div class="pay-groups" id="pay-groups"></div>
     </div>
   </div>
 
@@ -559,11 +629,7 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     </div>
   </div>
 
-  <div class="grid-half">
-    <div class="card" id="vendors-section">
-      <div class="card-head"><div class="card-title"><div class="dot dot-gold"></div>Vendor documents</div><div class="card-count" id="c-vendors">0</div></div>
-      <div id="vendors-list"><div class="loading"><div class="spinner"></div><div class="loading-text">Waiting...</div></div></div>
-    </div>
+  <div class="grid-full">
     <div class="card" id="subs-section">
       <div class="card-head"><div class="card-title"><div class="dot dot-purple"></div>Sub installer invoices</div><div class="card-count" id="c-subs">0</div></div>
       <div id="subs-list"><div class="loading"><div class="spinner"></div><div class="loading-text">Waiting...</div></div></div>
@@ -735,11 +801,26 @@ function getDemoData() {
       { id:'demo-s4', from:'Gutman Homes', subject:'New project inquiry — Frisco Town Center', hours:72, staleType:'they_went_quiet' },
     ],
     vendorDocs: [
-      { id:'demo-v1', from:'FHC Glass Supply', subject:'Invoice #FHC-88120 — tempered panels, due net-30', time:t(7,15), fromEmail:'ar@fhc-usa.com', vendorDoc:{ vendorShort:'FHC', type:'VENDOR_INVOICE', treatment:'payment_workflow' }},
-      { id:'demo-v2', from:'Sky Building Materials', subject:'Statement of account — March 2026', time:t(6,50), fromEmail:'billing@skybm.com', vendorDoc:{ vendorShort:'Sky', type:'VENDOR_STATEMENT', treatment:'statement_review' }},
-      { id:'demo-v3', from:'M3 Glass Industries', subject:'Past due notice — Invoice #M3-4410', time:t(8,5), fromEmail:'collections@m3glass.com', vendorDoc:{ vendorShort:'M3', type:'VENDOR_INVOICE', treatment:'legacy_review' }},
+      // FHC — multiple bills
+      { id:'demo-v1', from:'FHC Glass Supply', subject:'Invoice #FHC-88120 — $1,245.00 — tempered panels, due net-30', time:t(7,15), fromEmail:'ar@fhc-usa.com', vendorDoc:{ vendorShort:'FHC', type:'VENDOR_INVOICE', treatment:'payment_workflow' }, invoiceDate: new Date(Date.now()-8*86400000).toISOString() },
+      { id:'demo-v1b', from:'FHC Glass Supply', subject:'Invoice #FHC-88145 — $892.50 — frameless hardware order', time:t(7,18), fromEmail:'ar@fhc-usa.com', vendorDoc:{ vendorShort:'FHC', type:'VENDOR_INVOICE', treatment:'payment_workflow' }, invoiceDate: new Date(Date.now()-3*86400000).toISOString() },
+      { id:'demo-v1c', from:'FHC Glass Supply', subject:'Past due: Invoice #FHC-87992 — $2,103.75 — 18 days overdue', time:t(8,40), fromEmail:'ar@fhc-usa.com', vendorDoc:{ vendorShort:'FHC', type:'VENDOR_INVOICE', treatment:'payment_workflow' }, invoiceDate: new Date(Date.now()-48*86400000).toISOString() },
+      // Imperial — large backlog
+      { id:'demo-v-imp1', from:'Imperial Tempered Glass LLC', subject:'Invoice #IMP-23035 — $117.00 — Due 2026-03-31', time:t(8,0), fromEmail:'ap@imperialtempered.com', vendorDoc:{ vendorShort:'IMP', type:'VENDOR_INVOICE', treatment:'payment_workflow' }, invoiceDate: new Date(Date.now()-30*86400000).toISOString() },
+      { id:'demo-v-imp2', from:'Imperial Tempered Glass LLC', subject:'Invoice #IMP-26059-1 — $459.30 — Due 2026-04-01', time:t(8,2), fromEmail:'ap@imperialtempered.com', vendorDoc:{ vendorShort:'IMP', type:'VENDOR_INVOICE', treatment:'payment_workflow' }, invoiceDate: new Date(Date.now()-28*86400000).toISOString() },
+      { id:'demo-v-imp3', from:'Imperial Tempered Glass LLC', subject:'Invoice #IMP-26054-1 — $419.51 — Due 2026-03-31', time:t(8,4), fromEmail:'ap@imperialtempered.com', vendorDoc:{ vendorShort:'IMP', type:'VENDOR_INVOICE', treatment:'payment_workflow' }, invoiceDate: new Date(Date.now()-30*86400000).toISOString() },
+      { id:'demo-v-imp4', from:'Imperial Tempered Glass LLC', subject:'Invoice #IMP-P2071 — $89.53 — Due 2026-03-31', time:t(8,6), fromEmail:'ap@imperialtempered.com', vendorDoc:{ vendorShort:'IMP', type:'VENDOR_INVOICE', treatment:'payment_workflow' }, invoiceDate: new Date(Date.now()-30*86400000).toISOString() },
+      // Sky — statements + bill
+      { id:'demo-v2', from:'Sky Building Materials', subject:'Invoice #SKY-26060-1 — $447.28 — Due 2026-04-02', time:t(6,50), fromEmail:'billing@skybm.com', vendorDoc:{ vendorShort:'Sky', type:'VENDOR_INVOICE', treatment:'payment_workflow' }, invoiceDate: new Date(Date.now()-19*86400000).toISOString() },
+      { id:'demo-v2b', from:'Sky Building Materials', subject:'Statement of account — March 2026 — $1,340.00 total open', time:t(6,52), fromEmail:'billing@skybm.com', vendorDoc:{ vendorShort:'Sky', type:'VENDOR_STATEMENT', treatment:'statement_review' }, invoiceDate: new Date(Date.now()-12*86400000).toISOString() },
+      // CRL — single recent
+      { id:'demo-v-crl1', from:'CRL Inc', subject:'Invoice #CRL-44901 — $655.20 — storefront hardware', time:t(7,40), fromEmail:'billing@crlaurence.com', vendorDoc:{ vendorShort:'CRL', type:'VENDOR_INVOICE', treatment:'payment_workflow' }, invoiceDate: new Date(Date.now()-5*86400000).toISOString() },
+      // M3 — disputed (legacy_review, excluded from total)
+      { id:'demo-v3', from:'M3 Glass Industries', subject:'Past due notice — Invoice #M3-4410 — $3,280.00 — DISPUTED', time:t(8,5), fromEmail:'collections@m3glass.com', vendorDoc:{ vendorShort:'M3', type:'VENDOR_INVOICE', treatment:'legacy_review' }, invoiceDate: new Date(Date.now()-120*86400000).toISOString() },
+      // Builder POs (filtered by isBuilder — don't show in A/P)
       { id:'demo-v4', from:'BuilderTrend Notification', subject:'Vendor notification: Hines Homes — 9820 Juniper PO approved', time:t(9,10), fromEmail:'notifications@buildertrend.net', vendorDoc:{ type:'ERIDION_PO', poNumber:'EG-2026-0412', sentBy:'Dion' }},
       { id:'demo-v5', from:'Hyphen Solutions', subject:'New job assigned: Grand Homes — 14920 Bellflower', time:t(8,55), fromEmail:'alerts@hyphensolutions.com', vendorDoc:{ type:'BUILDER_PO' }},
+      // Shipment notifications — filtered out of A/P
       { id:'demo-v6', from:'Waterfall Surfaces', subject:'Order #WF-6621 shipped — ETA April 16', time:t(7,30), fromEmail:'orders@waterfall.com', vendorDoc:{ vendorShort:'WATERFALL', type:'VENDOR_SHIPMENT', treatment:'status_update' }},
     ],
     subEmails: {
@@ -1242,9 +1323,9 @@ function render(data){
 
   renderFridayBanner(data.fridayBanner);
   renderReceivables(receivables);
+  renderPayables(vendorOnly);
   renderPriority(priority);
   renderStale(stale);
-  renderVendors(vendorOnly);
   renderSubs(subInvoices);
   renderBuilders(builderDocs);
   renderInbox(inbox);
@@ -1403,6 +1484,95 @@ async function markPaidInMonday(btn, event){
     btn.disabled = false;
     console.error('markPaidInMonday error:', e);
   }
+}
+
+function renderPayables(docs){
+  const section = document.getElementById('payables-section');
+  if (!docs.length) {
+    section.classList.remove('visible');
+    return;
+  }
+
+  // Filter to actual bills — not shipment notifications or pure PO notifications
+  // payment_workflow = AP invoice needing payment; legacy_review = disputed (M3); statement_review = monthly statement
+  const payables = docs.filter(d => {
+    const t = (d.vendorDoc || {}).treatment || '';
+    const docType = (d.vendorDoc || {}).type || '';
+    return t === 'payment_workflow' || t === 'legacy_review' || t === 'statement_review'
+      || docType === 'VENDOR_INVOICE' || docType === 'VENDOR_STATEMENT';
+  });
+
+  if (!payables.length) {
+    section.classList.remove('visible');
+    return;
+  }
+
+  section.classList.add('visible');
+
+  // Group by vendor shortcode (fallback to sender name)
+  const groups = {};
+  payables.forEach(doc => {
+    const vd = doc.vendorDoc || {};
+    const vendor = vd.vendorShort || doc.from || 'Unknown';
+    if (!groups[vendor]) groups[vendor] = { docs: [], total: 0, oldestAge: null, disputed: false };
+    const amt = parseAmount({ subject: doc.subject, preview: doc.preview });
+    const isDisputed = vd.treatment === 'legacy_review';
+    groups[vendor].docs.push({ ...doc, _amount: amt, _disputed: isDisputed });
+    if (!isDisputed) groups[vendor].total += amt;
+    if (isDisputed) groups[vendor].disputed = true;
+    const age = ageInDays(doc);
+    if (age !== null && (groups[vendor].oldestAge === null || age > groups[vendor].oldestAge)) {
+      groups[vendor].oldestAge = age;
+    }
+  });
+
+  // Compute totals — exclude disputed amounts from grand total
+  const grandTotal = Object.values(groups).reduce((s,g) => s + g.total, 0);
+  const totalCount = payables.length;
+  const vendorCount = Object.keys(groups).length;
+  const oldestOverall = Object.values(groups).reduce((mx,g) => g.oldestAge !== null && g.oldestAge > (mx||-1) ? g.oldestAge : mx, null);
+
+  // Update headline
+  document.getElementById('pay-total').textContent = grandTotal > 0 ? fmtMoney(grandTotal) : `${totalCount} bills`;
+  document.getElementById('pay-count').textContent = totalCount;
+  document.getElementById('pay-vendors').textContent = vendorCount;
+  document.getElementById('pay-oldest').textContent = oldestOverall !== null ? `${oldestOverall}d` : '—';
+  set('s-pay-amt', grandTotal > 0 ? fmtMoney(grandTotal) : totalCount);
+
+  // Sort vendors by total desc, disputed last
+  const sortedVendors = Object.keys(groups).sort((a,b) => {
+    if (groups[a].disputed && !groups[b].disputed) return 1;
+    if (!groups[a].disputed && groups[b].disputed) return -1;
+    return groups[b].total - groups[a].total;
+  });
+
+  const groupsEl = document.getElementById('pay-groups');
+  groupsEl.innerHTML = sortedVendors.map((vendor, gi) => {
+    const g = groups[vendor];
+    const ageClass = g.oldestAge === null ? 'fresh' : (g.oldestAge >= 30 ? 'overdue' : (g.oldestAge >= 14 ? '' : 'fresh'));
+    const ageLabel = g.oldestAge !== null ? `oldest ${g.oldestAge}d` : 'recent';
+    const disputedBadge = g.disputed ? ' <span style="font-size:10px;background:#F5F5F5;color:#666;padding:1px 6px;border-radius:10px;font-weight:600">DISPUTED</span>' : '';
+    const billsHtml = g.docs.map(d => {
+      const disputedFlag = d._disputed ? ' <span style="font-size:10px;color:#999;font-style:italic">(disputed — not in total)</span>' : '';
+      return `<div class="pay-bill">
+        <div class="pay-bill-info">
+          <div class="pay-bill-ref">${esc(d.subject)}${disputedFlag}</div>
+          <div class="pay-bill-sub">${esc(d.from || '')}${d.time ? ' · ' + esc(d.time) : ''}</div>
+        </div>
+        <div class="pay-bill-amt">${d._amount > 0 ? fmtMoney(d._amount) : '—'}</div>
+      </div>`;
+    }).join('');
+    return `<div class="pay-group" id="pay-g${gi}">
+      <div class="pay-group-head" onclick="document.getElementById('pay-g${gi}').classList.toggle('open')">
+        <div class="pay-vendor"><span class="chev">▸</span>${esc(vendor)} <span style="color:var(--text-3);font-weight:400">(${g.docs.length})</span>${disputedBadge}</div>
+        <div class="pay-group-stats">
+          <span class="age ${ageClass}">${ageLabel}</span>
+          <span class="amt">${g.total > 0 ? fmtMoney(g.total) : (g.disputed ? '—' : '—')}</span>
+        </div>
+      </div>
+      <div class="pay-bills">${billsHtml}</div>
+    </div>`;
+  }).join('');
 }
 
 function renderPriority(items){
