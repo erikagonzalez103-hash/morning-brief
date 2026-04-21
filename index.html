@@ -605,6 +605,16 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     </div>
   </div>
 
+  <div class="grid-full" id="vendor-inbox-wrap" style="display:none">
+    <div class="card" id="vendor-inbox-section">
+      <div class="card-head">
+        <div class="card-title"><div class="dot" style="background:var(--gold)"></div>Vendor invoices — needs processing</div>
+        <div class="card-count" id="c-vendor-inbox">0</div>
+      </div>
+      <div id="vendor-inbox-list"></div>
+    </div>
+  </div>
+
   <div class="grid-full actions-section" id="actions-section" style="display:none">
     <div class="card">
       <div class="card-head">
@@ -822,6 +832,46 @@ function getDemoData() {
       { id:'demo-v5', from:'Hyphen Solutions', subject:'New job assigned: Grand Homes — 14920 Bellflower', time:t(8,55), fromEmail:'alerts@hyphensolutions.com', vendorDoc:{ type:'BUILDER_PO' }},
       // Shipment notifications — filtered out of A/P
       { id:'demo-v6', from:'Waterfall Surfaces', subject:'Order #WF-6621 shipped — ETA April 16', time:t(7,30), fromEmail:'orders@waterfall.com', vendorDoc:{ vendorShort:'WATERFALL', type:'VENDOR_SHIPMENT', treatment:'status_update' }},
+      // Imperial — dual channel (Square invoice + Intuit work order). Both route to vendor inbox.
+      { id:'demo-v-imp-sq', from:'IMPERIAL TEMPERED GLASS LLC', subject:'You received a new invoice (#000494)', preview:'Invoice #000494 from Imperial Tempered Glass LLC. Amount: $87.75. Due April 20, 2026. Pay online via Square.', time:t(8,6), fromEmail:'messenger@messaging.squareup.com', vendorDoc:{ vendorShort:'IMP', type:'VENDOR_INVOICE', treatment:'payment_workflow' }},
+      { id:'demo-v-imp-qb', from:'Imperial Tempered Glass LLC', subject:'New payment request from Imperial Tempered Glass, LLC - invoice 18529', preview:'Your invoice is ready! Total $239.52. Balance Due $239.52. Invoice_18529.pdf attached.', time:t(9,20), fromEmail:'quickbooks@notification.intuit.com', vendorDoc:{ vendorShort:'IMP', type:'VENDOR_INVOICE', treatment:'payment_workflow' }},
+    ],
+    // Server-shaped payables (what /brief returns after buildPayables merges Xero + order tracker)
+    payables: [
+      { id:'xero_inv_fhc_88120', source:'xero', vendor:'FHC Glass Supply', vendorShort:'FHC',
+        invoiceNum:'#FHC-88120', amount:1245.00, dueDate:new Date(Date.now()+6*86400000).toISOString().slice(0,10),
+        invoiceDate:new Date(Date.now()-24*86400000).toISOString().slice(0,10), status:'open',
+        egPO:'EG-2026-0388', poMissing:false, overdue:false },
+      { id:'xero_inv_fhc_87992', source:'xero', vendor:'FHC Glass Supply', vendorShort:'FHC',
+        invoiceNum:'#FHC-87992', amount:2103.75, dueDate:new Date(Date.now()-18*86400000).toISOString().slice(0,10),
+        invoiceDate:new Date(Date.now()-48*86400000).toISOString().slice(0,10), status:'open',
+        egPO:null, poMissing:true, overdue:true },
+      { id:'tracker_ord_imp_000494', source:'tracker', vendor:'Imperial Tempered Glass LLC', vendorShort:'IMP',
+        invoiceNum:'#000494', amount:87.75, dueDate:'2026-04-20',
+        invoiceDate:new Date(Date.now()-1*86400000).toISOString().slice(0,10), status:'open',
+        egPO:'EG-2026-0412', poMissing:false, material:'glass', jobType:'Showers',
+        builder:'Grand Homes', jobAddress:'14501 Stonebrook', overdue:false,
+        orderTrackerId:'ord_imp_000494' },
+      { id:'tracker_ord_imp_23035', source:'both', vendor:'Imperial Tempered Glass LLC', vendorShort:'IMP',
+        invoiceNum:'#IMP-23035', amount:117.00, dueDate:'2026-03-31',
+        invoiceDate:new Date(Date.now()-32*86400000).toISOString().slice(0,10), status:'open',
+        egPO:'EG-2026-0401', poMissing:false, material:'glass', jobType:'Mirrors',
+        builder:'Grand Homes', jobAddress:'3560 Bluebell', overdue:true,
+        xeroInvoiceId:'xero-abc', orderTrackerId:'ord_imp_23035' },
+      { id:'tracker_ord_sky_26060', source:'tracker', vendor:'Sky Building Materials', vendorShort:'Sky',
+        invoiceNum:'#SKY-26060-1', amount:447.28, dueDate:'2026-04-02',
+        invoiceDate:new Date(Date.now()-21*86400000).toISOString().slice(0,10), status:'open',
+        egPO:'EG-2026-0396', poMissing:false, material:'glass', jobType:'Glass and Mirrors',
+        builder:'Hines Homes', jobAddress:'12200 Preston Hollow', overdue:true,
+        orderTrackerId:'ord_sky_26060' },
+      { id:'xero_inv_crl_44901', source:'xero', vendor:'CRL Inc', vendorShort:'CRL',
+        invoiceNum:'#CRL-44901', amount:655.20, dueDate:new Date(Date.now()+9*86400000).toISOString().slice(0,10),
+        invoiceDate:new Date(Date.now()-5*86400000).toISOString().slice(0,10), status:'open',
+        egPO:'EG-2026-0418', poMissing:false, overdue:false },
+      { id:'xero_inv_m3_4410', source:'xero', vendor:'M3 Glass Industries', vendorShort:'M3',
+        invoiceNum:'#M3-4410', amount:3280.00, dueDate:new Date(Date.now()-90*86400000).toISOString().slice(0,10),
+        invoiceDate:new Date(Date.now()-120*86400000).toISOString().slice(0,10), status:'open',
+        egPO:null, poMissing:true, overdue:true },
     ],
     subEmails: {
       invoices: [
@@ -1299,6 +1349,10 @@ function render(data){
   const subInvoices=(data.subEmails||{}).invoices||[];
   const inbox=(data.inbox||[]).filter(notSnoozed);
 
+  // Server-merged A/P (Xero + order tracker). Fallback to legacy vendor-doc
+  // derivation if the server doesn't yet return payables (e.g. demo mode).
+  const payables = Array.isArray(data.payables) ? data.payables : null;
+
   // Split priority: receivables (invoices we sent, awaiting builder payment) get aggregated separately
   const receivables = priorityAll.filter(isReceivable);
   const priority = priorityAll.filter(item => !isReceivable(item));
@@ -1323,7 +1377,9 @@ function render(data){
 
   renderFridayBanner(data.fridayBanner);
   renderReceivables(receivables);
-  renderPayables(vendorOnly);
+  if (payables) renderPayables(payables);
+  else renderPayablesLegacy(vendorOnly);
+  renderVendorInbox(vendorOnly);
   renderPriority(priority);
   renderStale(stale);
   renderSubs(subInvoices);
@@ -1486,7 +1542,118 @@ async function markPaidInMonday(btn, event){
   }
 }
 
-function renderPayables(docs){
+// renderPayables — reads from server-merged data.payables (Xero + order tracker).
+// Each item is already normalized: {id, source, vendor, vendorShort, invoiceNum,
+//   amount, dueDate, invoiceDate, status, egPO, poMissing, material, jobType,
+//   builder, jobAddress, overdue, ...}
+function renderPayables(items){
+  const section = document.getElementById('payables-section');
+  if (!items || !items.length) {
+    section.classList.remove('visible');
+    set('s-pay-amt', 0);
+    return;
+  }
+  section.classList.add('visible');
+
+  // Group by vendor. Prefer vendorShort for consistent badging, fall back to vendor name.
+  const groups = {};
+  items.forEach(item => {
+    const key = item.vendorShort || item.vendor || 'Unknown';
+    if (!groups[key]) groups[key] = { items: [], total: 0, oldestDue: null, disputed: false, poMissingCount: 0 };
+    const amt = item.amount || 0;
+    // M3 is legacy/disputed — flag but don't add to total. Detect by vendorShort.
+    const isDisputed = (item.vendorShort === 'M3');
+    groups[key].items.push({ ...item, _disputed: isDisputed });
+    if (!isDisputed) groups[key].total += amt;
+    if (isDisputed) groups[key].disputed = true;
+    if (item.poMissing) groups[key].poMissingCount++;
+    // Track oldest due date (days since due, positive = overdue)
+    if (item.dueDate) {
+      const daysOverdue = Math.floor((Date.now() - new Date(item.dueDate).getTime()) / 86400000);
+      if (groups[key].oldestDue === null || daysOverdue > groups[key].oldestDue) {
+        groups[key].oldestDue = daysOverdue;
+      }
+    }
+  });
+
+  // Totals — exclude disputed from grand total
+  const grandTotal = Object.values(groups).reduce((s,g) => s + g.total, 0);
+  const totalCount = items.length;
+  const vendorCount = Object.keys(groups).length;
+  const totalPoMissing = items.filter(it => it.poMissing && !(it.vendorShort === 'M3')).length;
+  const oldestOverall = Object.values(groups).reduce((mx,g) => g.oldestDue !== null && g.oldestDue > (mx == null ? -Infinity : mx) ? g.oldestDue : mx, null);
+
+  // Headline
+  document.getElementById('pay-total').textContent = grandTotal > 0 ? fmtMoney(grandTotal) : `${totalCount} bills`;
+  document.getElementById('pay-count').textContent = totalCount;
+  document.getElementById('pay-vendors').textContent = vendorCount;
+  document.getElementById('pay-oldest').textContent = oldestOverall !== null ? (oldestOverall >= 0 ? `${oldestOverall}d overdue` : `${-oldestOverall}d out`) : '—';
+  set('s-pay-amt', grandTotal > 0 ? fmtMoney(grandTotal) : totalCount);
+
+  // Surface PO-missing warning if any bills need chasing
+  let headerExtra = document.getElementById('pay-warn-banner');
+  if (totalPoMissing > 0) {
+    if (!headerExtra) {
+      headerExtra = document.createElement('div');
+      headerExtra.id = 'pay-warn-banner';
+      headerExtra.style.cssText = 'padding:8px 16px;background:var(--amber-soft);border-bottom:1px solid var(--cream-dark);font-size:12px;color:var(--amber);font-weight:500';
+      section.insertBefore(headerExtra, section.querySelector('.pay-summary'));
+    }
+    headerExtra.innerHTML = `⚠ ${totalPoMissing} bill${totalPoMissing!==1?'s':''} missing Eridion PO# — chase vendor${totalPoMissing!==1?'s':''} before processing.`;
+  } else if (headerExtra) {
+    headerExtra.remove();
+  }
+
+  // Sort vendors by total desc, disputed last
+  const sortedVendors = Object.keys(groups).sort((a,b) => {
+    if (groups[a].disputed && !groups[b].disputed) return 1;
+    if (!groups[a].disputed && groups[b].disputed) return -1;
+    return groups[b].total - groups[a].total;
+  });
+
+  const groupsEl = document.getElementById('pay-groups');
+  groupsEl.innerHTML = sortedVendors.map((vendor, gi) => {
+    const g = groups[vendor];
+    const ageClass = g.oldestDue === null ? 'fresh' : (g.oldestDue >= 0 ? (g.oldestDue >= 30 ? 'overdue' : '') : 'fresh');
+    const ageLabel = g.oldestDue === null ? 'no due date' : (g.oldestDue >= 0 ? `${g.oldestDue}d overdue` : `due in ${-g.oldestDue}d`);
+    const disputedBadge = g.disputed ? ' <span style="font-size:10px;background:#F5F5F5;color:#666;padding:1px 6px;border-radius:10px;font-weight:600">DISPUTED</span>' : '';
+    const poWarnBadge = g.poMissingCount > 0 && !g.disputed ? ` <span style="font-size:10px;background:var(--amber-soft);color:var(--amber);padding:1px 6px;border-radius:10px;font-weight:600">⚠ ${g.poMissingCount} no PO#</span>` : '';
+    const billsHtml = g.items.map(bill => {
+      const srcBadge = bill.source === 'both'
+        ? '<span style="font-size:9px;background:#EAF5EE;color:var(--green);padding:1px 5px;border-radius:8px;margin-left:6px">Xero+Tracker</span>'
+        : (bill.source === 'xero'
+          ? '<span style="font-size:9px;background:#EEF2FF;color:var(--navy);padding:1px 5px;border-radius:8px;margin-left:6px">Xero</span>'
+          : '<span style="font-size:9px;background:#FDECEC;color:var(--red);padding:1px 5px;border-radius:8px;margin-left:6px">Tracker</span>');
+      const poFlag = bill.poMissing && !bill._disputed
+        ? ' <span style="font-size:10px;color:var(--amber);font-weight:600">⚠ no PO#</span>'
+        : '';
+      const disputedFlag = bill._disputed ? ' <span style="font-size:10px;color:#999;font-style:italic">(disputed — not in total)</span>' : '';
+      const dueTxt = bill.dueDate ? ` · due ${bill.dueDate}` : '';
+      const overdueFlag = bill.overdue ? ' <span style="font-size:10px;color:var(--red);font-weight:600">OVERDUE</span>' : '';
+      return `<div class="pay-bill">
+        <div class="pay-bill-info">
+          <div class="pay-bill-ref">${esc(bill.invoiceNum || '(no invoice #)')}${poFlag}${overdueFlag}${disputedFlag}${srcBadge}</div>
+          <div class="pay-bill-sub">${esc(bill.vendor)}${dueTxt}${bill.egPO ? ' · EG PO: ' + esc(bill.egPO) : ''}</div>
+        </div>
+        <div class="pay-bill-amt">${bill.amount > 0 ? fmtMoney(bill.amount) : '—'}</div>
+      </div>`;
+    }).join('');
+    return `<div class="pay-group" id="pay-g${gi}">
+      <div class="pay-group-head" onclick="document.getElementById('pay-g${gi}').classList.toggle('open')">
+        <div class="pay-vendor"><span class="chev">▸</span>${esc(vendor)} <span style="color:var(--text-3);font-weight:400">(${g.items.length})</span>${disputedBadge}${poWarnBadge}</div>
+        <div class="pay-group-stats">
+          <span class="age ${ageClass}">${ageLabel}</span>
+          <span class="amt">${g.total > 0 ? fmtMoney(g.total) : '—'}</span>
+        </div>
+      </div>
+      <div class="pay-bills">${billsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+// Legacy path — used only in demo mode or when server hasn't returned payables.
+// Groups raw vendor emails instead of normalized server payables.
+function renderPayablesLegacy(docs){
   const section = document.getElementById('payables-section');
   if (!docs.length) {
     section.classList.remove('visible');
@@ -1494,7 +1661,6 @@ function renderPayables(docs){
   }
 
   // Filter to actual bills — not shipment notifications or pure PO notifications
-  // payment_workflow = AP invoice needing payment; legacy_review = disputed (M3); statement_review = monthly statement
   const payables = docs.filter(d => {
     const t = (d.vendorDoc || {}).treatment || '';
     const docType = (d.vendorDoc || {}).type || '';
@@ -1526,20 +1692,17 @@ function renderPayables(docs){
     }
   });
 
-  // Compute totals — exclude disputed amounts from grand total
   const grandTotal = Object.values(groups).reduce((s,g) => s + g.total, 0);
   const totalCount = payables.length;
   const vendorCount = Object.keys(groups).length;
   const oldestOverall = Object.values(groups).reduce((mx,g) => g.oldestAge !== null && g.oldestAge > (mx||-1) ? g.oldestAge : mx, null);
 
-  // Update headline
   document.getElementById('pay-total').textContent = grandTotal > 0 ? fmtMoney(grandTotal) : `${totalCount} bills`;
   document.getElementById('pay-count').textContent = totalCount;
   document.getElementById('pay-vendors').textContent = vendorCount;
   document.getElementById('pay-oldest').textContent = oldestOverall !== null ? `${oldestOverall}d` : '—';
   set('s-pay-amt', grandTotal > 0 ? fmtMoney(grandTotal) : totalCount);
 
-  // Sort vendors by total desc, disputed last
   const sortedVendors = Object.keys(groups).sort((a,b) => {
     if (groups[a].disputed && !groups[b].disputed) return 1;
     if (!groups[a].disputed && groups[b].disputed) return -1;
@@ -1567,12 +1730,364 @@ function renderPayables(docs){
         <div class="pay-vendor"><span class="chev">▸</span>${esc(vendor)} <span style="color:var(--text-3);font-weight:400">(${g.docs.length})</span>${disputedBadge}</div>
         <div class="pay-group-stats">
           <span class="age ${ageClass}">${ageLabel}</span>
-          <span class="amt">${g.total > 0 ? fmtMoney(g.total) : (g.disputed ? '—' : '—')}</span>
+          <span class="amt">${g.total > 0 ? fmtMoney(g.total) : '—'}</span>
         </div>
       </div>
       <div class="pay-bills">${billsHtml}</div>
     </div>`;
   }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// VENDOR INBOX — vendor invoice emails awaiting processing into order tracker
+// Surfaces vendor emails (FHC, Imperial, Sky, CRL, etc.) with a prominent
+// "Add to Order Tracker" button per email. Skips shipment notifications and
+// disputed items (those just need filing, not tracker action).
+// ─────────────────────────────────────────────────────────────────────
+function renderVendorInbox(docs) {
+  const wrap = document.getElementById('vendor-inbox-wrap');
+  const listEl = document.getElementById('vendor-inbox-list');
+  const countEl = document.getElementById('c-vendor-inbox');
+
+  if (!docs || !docs.length) { wrap.style.display = 'none'; return; }
+
+  // Only actionable items: bills / work orders. Skip statements and shipments.
+  const actionable = docs.filter(d => {
+    const t = (d.vendorDoc || {}).treatment || '';
+    const docType = (d.vendorDoc || {}).type || '';
+    if (t === 'status_update') return false;               // shipment notice — file only
+    if (docType === 'VENDOR_SHIPMENT') return false;
+    return t === 'payment_workflow' || docType === 'VENDOR_INVOICE'
+        || docType === 'VENDOR_WORK_ORDER' || docType === 'VENDOR_CONFIRMATION';
+  });
+
+  if (!actionable.length) { wrap.style.display = 'none'; return; }
+
+  wrap.style.display = '';
+  countEl.textContent = actionable.length;
+
+  listEl.innerHTML = actionable.map((doc, i) => {
+    const _ci = cacheEmail(doc);
+    const vd = doc.vendorDoc || {};
+    const vendorBadge = vd.vendorShort
+      ? `<span style="font-size:10px;background:#FEF8E7;color:#8B6914;padding:2px 7px;border-radius:10px;font-weight:600;margin-right:6px">${esc(vd.vendorShort)}</span>`
+      : '';
+    const disputed = vd.treatment === 'legacy_review';
+    const disputedFlag = disputed
+      ? '<span style="font-size:10px;background:#F5F5F5;color:#666;padding:1px 6px;border-radius:10px;font-weight:600;margin-left:6px">DISPUTED</span>'
+      : '';
+    return `<div class="email-item" id="vi${i}" onclick="toggleItem('vi${i}')">
+        <div class="avatar" style="background:#FEF8E7;color:#8B6914">${initials(doc.from)}</div>
+        <div class="email-body">
+          <div class="email-top"><div class="email-from">${vendorBadge}${esc(doc.from)}${disputedFlag}</div><div class="email-time">${esc(doc.time || '')}</div></div>
+          <div class="email-subject">${esc(doc.subject || '(no subject)')}</div>
+          <div class="email-preview">${esc(doc.preview || '')}</div>
+        </div>
+      </div>
+      <div class="email-expanded" id="exp-vi${i}">
+        <div class="action-row">
+          ${disputed
+            ? '<button class="act-btn urgent-btn" onclick="event.stopPropagation();alert(\'M3 is a legacy dispute — do not add to order tracker. Review and respond manually.\')">Review (disputed)</button>'
+            : `<button class="act-btn primary" style="background:var(--gold);border-color:var(--gold)" onclick="event.stopPropagation();startAddToOrderTracker(${_ci},this)">📦 Add to Order Tracker</button>`
+          }
+          <button class="act-btn" onclick="draftReply(${_ci},event)">Draft reply</button>
+          <button class="act-btn" onclick="snoozeEmail('${esc(doc.id)}',7,this,event)">Snooze 7d</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ADD TO ORDER TRACKER — two-phase flow against /orders/add-from-email
+// ─────────────────────────────────────────────────────────────────────
+const BUILDERS_DROPDOWN = [
+  'Grand Homes','DR Horton','Hines Homes','Drees','Gutman','Lingenfelter',
+  'Martyn Hammer','Amanda Beard','Desco','Pennington','Preston Trail',
+  'Shawn Harned','Longacre','Rausch Coleman'
+];
+const JOB_TYPES_DROPDOWN = [
+  'Showers','Mirrors','Showers and Mirrors','Glass and Mirrors','Handrails',
+  'Handles','Storefront','Cabinet Glass','Shower Samples','Slats for A Frame',
+  'Door Handle Samples','Other'
+];
+
+async function startAddToOrderTracker(cacheIdx, btn) {
+  const e = _emailCache[cacheIdx];
+  if (!e) return;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Fetching email...';
+
+  try {
+    // Fetch email body first to find PDF attachment
+    let attachmentId = null;
+    if (e.id) {
+      try {
+        const bodyRes = await fetch(`${WORKER_URL}/email/body?id=${encodeURIComponent(e.id)}`);
+        const bodyData = await bodyRes.json();
+        const pdfAtt = (bodyData.attachments || []).find(a =>
+          a.contentType === 'application/pdf' || (a.name && a.name.toLowerCase().endsWith('.pdf'))
+        );
+        if (pdfAtt) attachmentId = pdfAtt.id;
+      } catch(bx) {}
+    }
+
+    btn.textContent = attachmentId ? 'AI extracting (with PDF)...' : 'AI extracting...';
+
+    // Phase 1 — preview
+    const res = await fetch(`${WORKER_URL}/orders/add-from-email`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ emailId: e.id, attachmentId, confirm: false })
+    });
+    const data = await res.json();
+
+    if (data.action === 'preview') {
+      showOrderTrackerModal(data, e, btn, origText);
+    } else {
+      btn.textContent = 'Extract failed';
+      setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 1800);
+      console.error('add-from-email preview error:', data);
+    }
+  } catch(err) {
+    btn.textContent = 'Error — retry';
+    btn.disabled = false;
+    console.error('startAddToOrderTracker error:', err);
+  }
+}
+
+function showOrderTrackerModal(previewData, emailData, originalBtn, origBtnText) {
+  const ex = previewData.extracted || {};
+  const vendorShort = previewData.vendorShort || '';
+  const materialDefault = previewData.materialDefault || 'glass';
+  const poMissing = !ex.egPO;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'ot-modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem;overflow-y:auto';
+
+  const builderOpts = ['<option value="">— Select builder —</option>']
+    .concat(BUILDERS_DROPDOWN.map(b => `<option value="${esc(b)}">${esc(b)}</option>`))
+    .concat(['<option value="__OTHER__">Other (type below)…</option>']).join('');
+
+  const jobTypeOpts = ['<option value="">— Select job type —</option>']
+    .concat(JOB_TYPES_DROPDOWN.map(j => {
+      const sel = (ex.jobType && ex.jobType === j) ? ' selected' : '';
+      return `<option value="${esc(j)}"${sel}>${esc(j)}</option>`;
+    })).join('');
+
+  // PO missing banner — shown above fields if AI didn't find one
+  const poWarning = poMissing ? `
+    <div style="background:var(--amber-soft);border-left:3px solid var(--amber);padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:12px;color:#854F0B">
+      <strong>⚠ No Eridion PO# found on this document.</strong> Per your rule, the job doesn't exist without our PO#.
+      You can either: (a) enter the PO# manually below if you know it, (b) click "Reply &amp; request PO" to chase the vendor, or (c) check "Confirm override" to save without a PO (not recommended).
+    </div>` : '';
+
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:22px;max-width:720px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.25)">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:4px">Add to Order Tracker</div>
+      <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:4px">${esc(previewData.vendor || 'Unknown vendor')}${vendorShort ? ' ('+esc(vendorShort)+')' : ''}</div>
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:14px">${previewData.hasPdf ? '📎 Extracted from: ' + esc(previewData.pdfName || 'PDF') : '📧 Extracted from email body'}</div>
+
+      ${poWarning}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="font-size:10px;font-weight:600;color:${poMissing?'var(--red)':'var(--text-3)'};text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">EG PO / Job # ${poMissing?'(REQUIRED)':''}</label>
+          <input type="text" id="ot-egpo" value="${esc(ex.egPO||'')}" placeholder="e.g. EG-2026-0412"
+            style="width:100%;padding:7px 10px;border:2px solid ${poMissing?'var(--red)':'var(--green)'};border-radius:6px;font-size:13px;font-family:inherit;font-weight:600"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Customer (Builder)</label>
+          <select id="ot-builder" onchange="document.getElementById('ot-builder-other').style.display=this.value==='__OTHER__'?'block':'none'" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:white">${builderOpts}</select>
+          <input type="text" id="ot-builder-other" placeholder="Type builder name" style="display:none;margin-top:4px;width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Job Address</label>
+          <input type="text" id="ot-jobaddr" value="${esc(ex.jobAddress||'')}" placeholder="123 Main St" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Division</label>
+          <select id="ot-division" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:white">
+            <option value="Residential">Residential</option><option value="Commercial">Commercial</option>
+          </select></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Material</label>
+          <select id="ot-material" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:white">
+            <option value="glass"${materialDefault==='glass'?' selected':''}>Glass</option>
+            <option value="hardware"${materialDefault==='hardware'?' selected':''}>Hardware</option>
+          </select></div>
+        <div style="grid-column:span 2"><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Job Type</label>
+          <select id="ot-jobtype" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:white">${jobTypeOpts}</select></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Vendor WO #</label>
+          <input type="text" id="ot-vwo" value="${esc(ex.vendorWO||'')}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Invoice #</label>
+          <input type="text" id="ot-inv" value="${esc(ex.invoiceNum||'')}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Amount ($)</label>
+          <input type="number" id="ot-amt" value="${ex.amount || ''}" step="0.01" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Status</label>
+          <input type="text" value="Open" disabled style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:#F4F5F7;color:var(--text-3)"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Order Date (PO rcvd)</label>
+          <input type="date" id="ot-orddate" value="${ex.orderDate||''}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Invoice Date</label>
+          <input type="date" id="ot-invdate" value="${ex.invoiceDate||''}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Due Date</label>
+          <input type="date" id="ot-duedate" value="${ex.dueDate||''}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+        <div><label style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">Completion Date</label>
+          <input type="date" id="ot-compdate" value="${ex.completionDate||''}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"></div>
+      </div>
+
+      ${poMissing ? `<div style="margin-bottom:14px"><label style="font-size:11px;display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="ot-po-override"> <span>Confirm override — save without EG PO# (not recommended)</span></label></div>` : ''}
+
+      <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+        <div>
+          ${poMissing ? `<button onclick="replyToVendorForPO(this)" style="padding:8px 14px;border-radius:6px;border:1px solid var(--amber);background:var(--amber-soft);color:#854F0B;cursor:pointer;font-size:12px;font-weight:600">✉ Reply &amp; request PO</button>` : ''}
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="closeOrderTrackerModal(true)" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">Cancel</button>
+          <button onclick="confirmOrderTrackerCreate(this)" style="padding:8px 16px;border-radius:6px;border:none;background:var(--navy);color:white;cursor:pointer;font-size:12px;font-weight:600">Save Order →</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  window._pendingOrderTracker = { emailData, previewData, originalBtn, origBtnText };
+  overlay.addEventListener('click', function(ev) { if (ev.target === overlay) closeOrderTrackerModal(true); });
+}
+
+function closeOrderTrackerModal(restoreBtn) {
+  const overlay = document.getElementById('ot-modal-overlay');
+  if (overlay) overlay.remove();
+  const ctx = window._pendingOrderTracker;
+  if (restoreBtn && ctx && ctx.originalBtn) {
+    ctx.originalBtn.textContent = ctx.origBtnText || '📦 Add to Order Tracker';
+    ctx.originalBtn.disabled = false;
+  }
+  window._pendingOrderTracker = null;
+}
+
+async function confirmOrderTrackerCreate(btn) {
+  const ctx = window._pendingOrderTracker;
+  if (!ctx) return;
+  const { emailData, previewData } = ctx;
+
+  // Collect form values
+  const builderSel = document.getElementById('ot-builder').value;
+  const builderOther = document.getElementById('ot-builder-other').value.trim();
+  const builder = builderSel === '__OTHER__' ? builderOther : builderSel;
+
+  const overrides = {
+    egPO: document.getElementById('ot-egpo').value.trim() || null,
+    builder: builder || null,
+    jobAddress: document.getElementById('ot-jobaddr').value.trim() || null,
+    division: document.getElementById('ot-division').value,
+    material: document.getElementById('ot-material').value,
+    jobType: document.getElementById('ot-jobtype').value || null,
+    vendorWO: document.getElementById('ot-vwo').value.trim() || null,
+    invoiceNum: document.getElementById('ot-inv').value.trim() || null,
+    amount: parseFloat(document.getElementById('ot-amt').value) || 0,
+    orderDate: document.getElementById('ot-orddate').value || null,
+    invoiceDate: document.getElementById('ot-invdate').value || null,
+    dueDate: document.getElementById('ot-duedate').value || null,
+    completionDate: document.getElementById('ot-compdate').value || null,
+  };
+
+  const overrideEl = document.getElementById('ot-po-override');
+  if (overrideEl && overrideEl.checked) overrides.confirmPOMissing = true;
+
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${WORKER_URL}/orders/add-from-email`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        emailId: emailData.id,
+        attachmentId: previewData.attachmentId || null,
+        confirm: true,
+        overrides,
+      })
+    });
+    const data = await res.json();
+
+    if (data.action === 'order_created') {
+      btn.textContent = '✓ Saved';
+      btn.style.background = 'var(--green)';
+      setTimeout(() => { closeOrderTrackerModal(false); if (ctx.originalBtn) { ctx.originalBtn.textContent = '✓ In tracker'; ctx.originalBtn.style.background = 'var(--green)'; ctx.originalBtn.style.borderColor = 'var(--green)'; ctx.originalBtn.style.color = 'white'; } }, 700);
+    } else if (data.action === 'po_missing') {
+      // Server re-confirmed PO missing — show reply
+      showPOMissingReply(data);
+      btn.textContent = 'Save Order →';
+      btn.disabled = false;
+    } else {
+      btn.textContent = 'Error — retry';
+      btn.disabled = false;
+      console.error('order_created failed:', data);
+      alert('Could not save: ' + (data.error || data.message || 'unknown'));
+    }
+  } catch(err) {
+    btn.textContent = 'Error — retry';
+    btn.disabled = false;
+    console.error('confirmOrderTrackerCreate error:', err);
+  }
+}
+
+function replyToVendorForPO(btn) {
+  const ctx = window._pendingOrderTracker;
+  if (!ctx) return;
+  const { emailData, previewData } = ctx;
+
+  // Pre-compute suggested reply client-side (same template as worker returns)
+  const firstName = (previewData.vendor || '').split(/\s|,/)[0] || 'there';
+  const docWord = (emailData.subject || '').toLowerCase().indexOf('invoice') !== -1 ? 'invoice' : 'document';
+  const body = `Hi ${firstName},
+
+Thanks for sending this over. I'm unable to process this ${docWord} without our Eridion Glass PO# referenced on it — I use our PO# to track all vendor spend against project projections and reconcile against our internal records.
+
+Could you resend this ${docWord} with our EG PO# included on the document itself? Once I have that I can get it into our system right away.
+
+Thanks,
+Erika Harrison
+Eridion Glass`;
+
+  showPOMissingReply({ suggestedReply: body, vendor: previewData.vendor, emailId: emailData.id });
+}
+
+function showPOMissingReply(data) {
+  // Replace modal contents with reply view
+  const overlay = document.getElementById('ot-modal-overlay');
+  if (!overlay) return;
+  const card = overlay.querySelector('div');
+  card.innerHTML = `
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:4px">Request PO# from vendor</div>
+    <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:14px">Reply to ${esc(data.vendor || 'vendor')}</div>
+    <textarea id="po-reply-body" style="width:100%;height:220px;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;line-height:1.55;resize:vertical">${esc(data.suggestedReply || '')}</textarea>
+    <div style="font-size:11px;color:var(--text-3);margin-top:6px;margin-bottom:14px">Edit as needed. Clicking "Send reply" will send through Outlook and leave this email in your inbox for later processing.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeOrderTrackerModal(true)" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">Cancel</button>
+      <button onclick="sendPOReply(this,'${esc(data.emailId || '')}')" style="padding:8px 16px;border-radius:6px;border:none;background:var(--amber);color:white;cursor:pointer;font-size:12px;font-weight:600">✉ Send reply</button>
+    </div>`;
+}
+
+async function sendPOReply(btn, emailId) {
+  const body = document.getElementById('po-reply-body').value.trim();
+  if (!body) return;
+  btn.textContent = 'Sending...';
+  btn.disabled = true;
+  try {
+    // Reuse /api/reply-send if available, else /api/messages as a best-effort.
+    // For now, use the same pattern as draftReply — log to console and copy to clipboard.
+    // TODO: wire to a real send endpoint when /email/send is built.
+    await navigator.clipboard.writeText(body).catch(()=>{});
+    btn.textContent = '✓ Copied — paste into Outlook';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => closeOrderTrackerModal(true), 1600);
+  } catch(err) {
+    btn.textContent = 'Error — retry';
+    btn.disabled = false;
+  }
 }
 
 function renderPriority(items){
