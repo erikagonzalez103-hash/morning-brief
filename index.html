@@ -557,52 +557,12 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
 
   <div id="friday-banner" style="display:none"></div>
   <div class="stats">
-    <div class="stat good" onclick="scroll2('receivables-section')"><div class="stat-num" id="s-recv-amt" style="color:var(--green)">—</div><div class="stat-label">Money in (A/R)</div></div>
-    <div class="stat urgent" onclick="scroll2('payables-section')"><div class="stat-num" id="s-pay-amt" style="color:var(--red)">—</div><div class="stat-label">Money out (A/P)</div></div>
+    <div class="stat good"><div class="stat-num" id="s-received-mtd" style="color:var(--green)">—</div><div class="stat-label" id="s-received-label">Received MTD</div></div>
+    <div class="stat urgent"><div class="stat-num" id="s-spent-mtd" style="color:var(--red)">—</div><div class="stat-label" id="s-spent-label">Spent MTD</div></div>
     <div class="stat urgent" onclick="scroll2('priority-section')"><div class="stat-num is-red" id="s-priority">—</div><div class="stat-label">Act today</div></div>
     <div class="stat warn" onclick="scroll2('stale-section')"><div class="stat-num is-amber" id="s-stale">—</div><div class="stat-label">Stale &gt;24h</div></div>
     <div class="stat sub" onclick="scroll2('subs-section')"><div class="stat-num is-purple" id="s-subs">—</div><div class="stat-label">Sub invoices</div></div>
     <div class="stat good" onclick="scroll2('inbox-section')"><div class="stat-num" id="s-inbox">—</div><div class="stat-label">New emails</div></div>
-  </div>
-
-  <div class="grid-full">
-    <div class="card recv-section" id="receivables-section">
-      <div class="cf-header">
-        <div class="cf-header-title">
-          <span class="cf-icon">💰</span>
-          <span>Receivables — invoices owed to you</span>
-          <span class="cf-dir cf-dir-in">Money in</span>
-        </div>
-      </div>
-      <div class="recv-summary" onclick="document.getElementById('receivables-section').classList.toggle('open')">
-        <div class="recv-headline">
-          <div class="recv-total" id="recv-total">$0</div>
-          <div class="recv-meta"><strong id="recv-count">0</strong> invoices · <strong id="recv-builders">0</strong> builders · oldest <strong id="recv-oldest">—</strong></div>
-        </div>
-        <div class="recv-toggle"><span id="recv-toggle-label">View by company</span><span class="chev">›</span></div>
-      </div>
-      <div class="recv-groups" id="recv-groups"></div>
-    </div>
-  </div>
-
-  <div class="grid-full">
-    <div class="card pay-section" id="payables-section">
-      <div class="cf-header">
-        <div class="cf-header-title">
-          <span class="cf-icon">💸</span>
-          <span>Payables — bills you owe vendors</span>
-          <span class="cf-dir cf-dir-out">Money out</span>
-        </div>
-      </div>
-      <div class="pay-summary" onclick="document.getElementById('payables-section').classList.toggle('open')">
-        <div class="pay-headline">
-          <div class="pay-total" id="pay-total">$0</div>
-          <div class="pay-meta"><strong id="pay-count">0</strong> bills · <strong id="pay-vendors">0</strong> vendors · oldest <strong id="pay-oldest">—</strong></div>
-        </div>
-        <div class="pay-toggle"><span>View by vendor</span><span class="chev">›</span></div>
-      </div>
-      <div class="pay-groups" id="pay-groups"></div>
-    </div>
   </div>
 
   <div class="grid-full" id="vendor-inbox-wrap" style="display:none">
@@ -888,6 +848,13 @@ function getDemoData() {
       { id:'demo-i5', from:'FIFA 2026 Dallas Host Committee', subject:'Vendor badge pickup — credential instructions', preview:'Your vendor credentials for FIFA World Cup 2026 Dallas matches are ready for pickup.', time:t(6,30) },
     ],
     fridayBanner: null,
+    cashflowMTD: {
+      month: new Date().toLocaleString('en-US', { month: 'long' }),
+      receivedMTD: 42350.75,
+      spentMTD: 18920.40,
+      arCount: 7,
+      apCount: 14,
+    },
   };
 }
 
@@ -1343,22 +1310,29 @@ function render(data){
   const snoozed = getSnoozedEmails();
   const notSnoozed = (item) => !snoozed[item.id];
 
-  const priorityAll=(data.priority||[]).filter(notSnoozed);
+  const priority=(data.priority||[]).filter(notSnoozed);
   const stale=(data.stale||[]).filter(notSnoozed);
   const vendorDocs=data.vendorDocs||[];
   const subInvoices=(data.subEmails||{}).invoices||[];
   const inbox=(data.inbox||[]).filter(notSnoozed);
 
-  // Server-merged A/P (Xero + order tracker). Fallback to legacy vendor-doc
-  // derivation if the server doesn't yet return payables (e.g. demo mode).
-  const payables = Array.isArray(data.payables) ? data.payables : null;
-
-  // Split priority: receivables (invoices we sent, awaiting builder payment) get aggregated separately
-  const receivables = priorityAll.filter(isReceivable);
-  const priority = priorityAll.filter(item => !isReceivable(item));
-
   const builderDocs=vendorDocs.filter(d=>isBuilder(d));
   const vendorOnly=vendorDocs.filter(d=>!isBuilder(d));
+
+  // MTD cash flow — populate top-of-page tiles
+  const mtd = data.cashflowMTD || null;
+  if (mtd) {
+    const monthShort = (mtd.month || '').slice(0,3);
+    set('s-received-mtd', mtd.receivedMTD > 0 ? fmtMoney(mtd.receivedMTD) : '$0');
+    set('s-spent-mtd', mtd.spentMTD > 0 ? fmtMoney(mtd.spentMTD) : '$0');
+    if (monthShort) {
+      set('s-received-label', 'Received ' + monthShort);
+      set('s-spent-label', 'Spent ' + monthShort);
+    }
+  } else {
+    set('s-received-mtd', '—');
+    set('s-spent-mtd', '—');
+  }
 
   set('s-priority',priority.length);
   set('s-stale',stale.length);
@@ -1372,13 +1346,10 @@ function render(data){
   set('c-inbox',inbox.length);
   set('c-builders',builderDocs.length);
 
-  const total=priority.length+stale.length+receivables.length;
+  const total=priority.length+stale.length;
   document.getElementById('brief-sub').textContent=total>0?`${total} item${total!==1?'s':''} need your attention today.`:"You're all caught up. Great start to the day.";
 
   renderFridayBanner(data.fridayBanner);
-  renderReceivables(receivables);
-  if (payables) renderPayables(payables);
-  else renderPayablesLegacy(vendorOnly);
   renderVendorInbox(vendorOnly);
   renderPriority(priority);
   renderStale(stale);
