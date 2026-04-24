@@ -763,6 +763,8 @@ function getDemoData() {
       { id:'demo-p4', from:'Zelle Notification', subject:'Payment received: $3,450.00 from Hines Homes', preview:'You received a Zelle payment of $3,450.00 from Hines Homes LLC.', type:'payment', tags:['ach','payment'], time:t(6,55), builder:'Hines Homes', amount:3450 },
       { id:'demo-p5', from:'Tony Martinez', subject:'Reminder: Invoice overdue — 7710 Bluebonnet staircase railing', preview:'Hi Erika, just a reminder that our invoice for the staircase railing at 7710 Bluebonnet is now 15 days past due.', type:'urgent', tags:['urgent','sub-invoice'], time:t(8,40), paymentMethod:'Zelle' },
       { id:'demo-p6', from:'FHC Glass Supply', subject:'Order confirmation #FHC-29841 — tempered panels', preview:'Your order for 12x tempered glass panels has been confirmed. Estimated delivery: April 18.', type:'payment', tags:['payment','fhc'], time:t(7,20) },
+      { id:'demo-p-paymode', from:'Paymode Confirmation of Payment', subject:'Paymode Confirmation of Payment — $1,090.62 from D.R. Horton, Inc.', preview:'A payment of $1,090.62 was credited to your account on 24-Apr-2026. Payment #2425318 — D.R. Horton, Inc.', type:'paymode_payment', tags:['paymode','payment-received','drhorton'], time:t(11,24), fromEmail:'notification@paymode.com' },
+      { id:'demo-p-drhnotif', from:'noreply@drhorton.com', subject:'Vendor Notification', preview:'D.R. Horton Vendor Notification — My Updated Purchase Orders (2 Orders): Moonlight Meadows, 361 Moonlight Graham Blvd (Lot 305) PO 200911; 401 Moonlight Graham Blvd (Lot 309) PO 201137. Cost Code: Mirrors Bath.', type:'drh_vendor_notification', tags:['drhorton','new_job','vendor_notification'], time:t(8,10), fromEmail:'noreply@drhorton.com' },
     ],
     stale: [
       { id:'demo-s1', from:'David Park — Grand Homes', subject:'RE: 5501 Oakmont — install schedule change?', hours:36, staleType:'awaiting_reply' },
@@ -2061,6 +2063,487 @@ async function sendPOReply(btn, emailId) {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// PAYMODE RECONCILIATION FLOW (DR Horton payments)
+// ═════════════════════════════════════════════════════════════════════
+async function startPayModeReconcile(btn, event) {
+  if (event) event.stopPropagation();
+  const emailId = btn.getAttribute('data-emailid');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Extracting PayMode PDF (AI)...';
+
+  try {
+    const res = await fetch(`${WORKER_URL}/paymode/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailId, confirm: false })
+    });
+    const data = await res.json();
+    if (data.action === 'preview') {
+      showPayModeModal(data, btn, origText);
+    } else if (data.action === 'needs_upload') {
+      showPayModeUploadModal(data, btn, origText);
+    } else {
+      btn.textContent = '⚠ ' + (data.error || 'Extract failed');
+      btn.style.color = 'var(--red)';
+      setTimeout(() => { btn.textContent = origText; btn.disabled = false; btn.style.color = ''; }, 3000);
+    }
+  } catch(err) {
+    btn.textContent = 'Error — retry';
+    btn.disabled = false;
+    console.error('PayMode extract error:', err);
+  }
+}
+
+// Show an upload prompt when the PayMode email has no PDF attachment.
+// Real-world: PayMode notification emails never contain the detail PDF —
+// it must be exported from paymode.com manually. Rather than erroring out,
+// we walk Erika through the export and accept the uploaded file.
+function showPayModeUploadModal(data, originalBtn, origBtnText) {
+  const overlay = document.createElement('div');
+  overlay.id = 'pm-upload-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem;overflow-y:auto';
+
+  const instructions = (data.instructions || []).map((s, i) => `<li style="margin-bottom:4px">${esc(s)}</li>`).join('');
+
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:22px;max-width:560px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.25)">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:4px">PayMode — PDF upload needed</div>
+      <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:12px">${esc(data.message || 'Upload the PayMode detail PDF to continue')}</div>
+
+      <div style="background:#F7F7F9;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12px;line-height:1.6">
+        <div style="font-weight:600;margin-bottom:6px;color:var(--navy)">How to get the PDF:</div>
+        <ol style="padding-left:20px;margin:0">${instructions}</ol>
+      </div>
+
+      <a href="${esc(data.payModeUrl || 'https://secure.paymode.com')}" target="_blank" style="display:inline-block;padding:8px 14px;background:var(--navy);color:white;text-decoration:none;border-radius:6px;font-size:12px;font-weight:600;margin-bottom:14px">🔗 Open PayMode →</a>
+
+      <div style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;margin-bottom:14px" id="pm-drop-zone">
+        <div style="font-size:13px;color:var(--text-3);margin-bottom:10px">Drop PDF here, or:</div>
+        <input type="file" id="pm-pdf-file" accept="application/pdf,.pdf" style="display:none" onchange="handlePayModePdfSelect(this)">
+        <button onclick="document.getElementById('pm-pdf-file').click()" style="padding:8px 16px;border-radius:6px;border:1px solid var(--navy);background:white;color:var(--navy);cursor:pointer;font-size:12px;font-weight:600">Choose PDF file</button>
+        <div id="pm-pdf-filename" style="margin-top:10px;font-size:11px;color:var(--green);font-weight:600"></div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="closePayModeUploadModal(true)" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">Cancel</button>
+        <button id="pm-upload-continue" disabled onclick="continuePayModeWithUpload(this)" style="padding:8px 16px;border-radius:6px;border:none;background:var(--navy);color:white;cursor:pointer;font-size:12px;font-weight:600;opacity:0.4">Extract &amp; match →</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  window._pendingPayModeUpload = { emailId: data.emailId, originalBtn, origBtnText, pdfBase64: null };
+  overlay.addEventListener('click', ev => { if (ev.target === overlay) closePayModeUploadModal(true); });
+
+  // Drag-drop support
+  const zone = document.getElementById('pm-drop-zone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor = 'var(--navy)'; });
+  zone.addEventListener('dragleave', e => { zone.style.borderColor = 'var(--border)'; });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.style.borderColor = 'var(--border)';
+    const file = e.dataTransfer.files[0];
+    if (file) readPayModePdfFile(file);
+  });
+}
+
+function handlePayModePdfSelect(input) {
+  const file = input.files && input.files[0];
+  if (file) readPayModePdfFile(file);
+}
+
+function readPayModePdfFile(file) {
+  const ctx = window._pendingPayModeUpload;
+  if (!ctx) return;
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    alert('Please select a PDF file.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    // e.target.result is data URL: "data:application/pdf;base64,JVBER..."
+    const base64 = e.target.result.split(',')[1];
+    ctx.pdfBase64 = base64;
+    document.getElementById('pm-pdf-filename').textContent = '✓ ' + file.name + ' · ' + Math.round(file.size/1024) + ' KB';
+    const btn = document.getElementById('pm-upload-continue');
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  };
+  reader.readAsDataURL(file);
+}
+
+function closePayModeUploadModal(restoreBtn) {
+  const overlay = document.getElementById('pm-upload-overlay');
+  if (overlay) overlay.remove();
+  const ctx = window._pendingPayModeUpload;
+  if (restoreBtn && ctx && ctx.originalBtn) {
+    ctx.originalBtn.textContent = ctx.origBtnText || '📄 Process PayMode payment';
+    ctx.originalBtn.disabled = false;
+  }
+  window._pendingPayModeUpload = null;
+}
+
+async function continuePayModeWithUpload(btn) {
+  const ctx = window._pendingPayModeUpload;
+  if (!ctx || !ctx.pdfBase64) return;
+
+  btn.textContent = 'Extracting (AI)...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${WORKER_URL}/paymode/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailId: ctx.emailId, confirm: false, pdfBase64: ctx.pdfBase64 })
+    });
+    const data = await res.json();
+
+    if (data.action === 'preview') {
+      // Close upload modal, open reconciliation modal
+      const overlay = document.getElementById('pm-upload-overlay');
+      if (overlay) overlay.remove();
+      showPayModeModal(data, ctx.originalBtn, ctx.origBtnText);
+      window._pendingPayModeUpload = null;
+    } else {
+      btn.textContent = '⚠ ' + (data.error || 'Extract failed');
+      setTimeout(() => {
+        btn.textContent = 'Extract & match →';
+        btn.disabled = false;
+      }, 2500);
+      console.error('paymode upload extract error:', data);
+    }
+  } catch(err) {
+    btn.textContent = 'Error — retry';
+    btn.disabled = false;
+    console.error(err);
+  }
+}
+
+function showPayModeModal(data, originalBtn, origBtnText) {
+  const overlay = document.createElement('div');
+  overlay.id = 'pm-modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem;overflow-y:auto';
+
+  const matches = data.matches || [];
+  const multiMatchCount = matches.filter(m => m.matchState === 'multiple_matches').length;
+  const noMatchCount = matches.filter(m => m.matchState === 'no_match').length;
+  const singleMatchCount = matches.filter(m => m.matchState === 'single_match').length;
+
+  const matchRows = matches.map((m, i) => {
+    const state = m.matchState;
+    const stateColor = state === 'single_match' ? 'var(--green)' : (state === 'multiple_matches' ? 'var(--amber)' : 'var(--red)');
+    const stateLabel = state === 'single_match' ? '✓ match' : (state === 'multiple_matches' ? `⚠ ${m.candidates.length} matches` : '✗ no match');
+
+    let candidatesUI = '';
+    if (m.candidates && m.candidates.length) {
+      candidatesUI = m.candidates.map((c, ci) => {
+        const checked = ci === 0 ? 'checked' : '';
+        return `<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 0;cursor:pointer">
+          <input type="radio" name="pm-match-${i}" value="${ci}" ${checked}>
+          <span><strong>${esc(c.mondayItemName)}</strong> · ${esc(c.builder || 'no builder')} · <span style="color:var(--text-3)">${esc(c.currentStatus || 'no status')}</span></span>
+        </label>`;
+      }).join('');
+    } else {
+      candidatesUI = `<div style="font-size:12px;color:var(--red);font-style:italic">No Monday job found for this address. Create it first, or skip this line.</div>`;
+    }
+
+    const skipBox = state === 'no_match'
+      ? `<label style="display:block;margin-top:6px;font-size:11px;color:var(--text-3)"><input type="checkbox" class="pm-skip" data-idx="${i}" checked> Skip — no Monday update</label>`
+      : `<label style="display:block;margin-top:6px;font-size:11px"><input type="checkbox" class="pm-skip" data-idx="${i}"> Skip this address</label>`;
+
+    return `<div class="pm-match-row" data-idx="${i}" style="border:1px solid var(--cream-dark);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:white">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-weight:600;font-size:13px">${esc(m.address)} <span style="color:var(--text-3);font-weight:400">· ${m.lineCount} line${m.lineCount!==1?'s':''}</span></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-weight:600;font-size:13px;font-variant-numeric:tabular-nums">${fmtMoney(m.amount)}</span>
+          <span style="font-size:11px;font-weight:600;color:${stateColor}">${stateLabel}</span>
+        </div>
+      </div>
+      <div>${candidatesUI}</div>
+      ${skipBox}
+    </div>`;
+  }).join('');
+
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:22px;max-width:820px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.25);max-height:85vh;overflow-y:auto">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:4px">PayMode Reconciliation</div>
+      <div style="font-size:16px;font-weight:600;color:var(--navy);margin-bottom:2px">${esc(data.payerName || 'D.R. Horton')} · ${fmtMoney(data.totalAmount)}</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:16px">Payment #${esc(data.paymentNumber || '—')} · credited ${esc(data.creditDate || '—')} · ${matches.length} address${matches.length!==1?'es':''} · ${data.totalRemittances} remittance lines</div>
+
+      ${multiMatchCount > 0 ? `<div style="background:#FEF3C7;border-left:3px solid var(--amber);padding:9px 12px;border-radius:6px;margin-bottom:10px;font-size:12px">⚠ ${multiMatchCount} address${multiMatchCount!==1?'es':''} matched multiple Monday jobs — pick the right one below.</div>` : ''}
+      ${noMatchCount > 0 ? `<div style="background:var(--red-soft);border-left:3px solid var(--red);padding:9px 12px;border-radius:6px;margin-bottom:10px;font-size:12px">✗ ${noMatchCount} address${noMatchCount!==1?'es':''} didn't match any Monday job — they'll be skipped unless you create the jobs first.</div>` : ''}
+      ${singleMatchCount > 0 ? `<div style="background:#EAF5EE;border-left:3px solid var(--green);padding:9px 12px;border-radius:6px;margin-bottom:16px;font-size:12px">✓ ${singleMatchCount} address${singleMatchCount!==1?'es':''} matched cleanly — ready to mark paid.</div>` : ''}
+
+      <div style="margin-bottom:16px">${matchRows}</div>
+
+      <div style="padding:12px;background:#F7F7F9;border-radius:8px;margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="pm-log-ledger" checked>
+          <span>Also log to Profit First Ledger (distribute ${fmtMoney(data.totalAmount)} across buckets)</span>
+        </label>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="closePayModeModal(true)" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">Cancel</button>
+        <button onclick="confirmPayModeReconcile(this)" style="padding:8px 16px;border-radius:6px;border:none;background:var(--navy);color:white;cursor:pointer;font-size:12px;font-weight:600">Mark matched jobs paid &amp; file email →</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  window._pendingPayMode = { data, originalBtn, origBtnText };
+  overlay.addEventListener('click', ev => { if (ev.target === overlay) closePayModeModal(true); });
+}
+
+function closePayModeModal(restoreBtn) {
+  const overlay = document.getElementById('pm-modal-overlay');
+  if (overlay) overlay.remove();
+  const ctx = window._pendingPayMode;
+  if (restoreBtn && ctx && ctx.originalBtn) {
+    ctx.originalBtn.textContent = ctx.origBtnText || '📄 Process PayMode payment';
+    ctx.originalBtn.disabled = false;
+  }
+  window._pendingPayMode = null;
+}
+
+async function confirmPayModeReconcile(btn) {
+  const ctx = window._pendingPayMode;
+  if (!ctx) return;
+  const { data } = ctx;
+
+  // Gather user's selections — one candidate per address (unless skipped)
+  const confirmed = [];
+  data.matches.forEach((m, i) => {
+    const skipEl = document.querySelector('.pm-skip[data-idx="' + i + '"]');
+    if (skipEl && skipEl.checked) return;
+    if (!m.candidates || !m.candidates.length) return;
+    const sel = document.querySelector('input[name="pm-match-' + i + '"]:checked');
+    const ci = sel ? parseInt(sel.value) : 0;
+    const c = m.candidates[ci];
+    confirmed.push({
+      address: m.address,
+      amount: m.amount,
+      mondayItemId: c.mondayItemId,
+      mondayBoardId: c.mondayBoardId,
+      statusColId: c.statusColId,
+      mondayItemName: c.mondayItemName,
+    });
+  });
+
+  const logLedger = document.getElementById('pm-log-ledger').checked;
+
+  btn.textContent = 'Processing...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${WORKER_URL}/paymode/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailId: data.emailId, confirm: true, matches: confirmed })
+    });
+    const result = await res.json();
+
+    if (result.action === 'processed') {
+      const ok = (result.applied || []).length;
+      const fail = (result.failed || []).length;
+
+      // Log to ledger if requested (PayMode = no Stripe fee)
+      if (logLedger && data.totalAmount > 0) {
+        try {
+          const addresses = confirmed.map(c => c.address).filter(Boolean).join(', ');
+          await fetch(`${WORKER_URL}/ledger/add-payment`, {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json' },
+            body: JSON.stringify({
+              dateReceived: data.creditDate || new Date().toISOString().slice(0,10),
+              client: data.payerName || 'D.R. Horton, Inc.',
+              checkOrDeposit: 'PayMode #' + (data.paymentNumber || ''),
+              jobNumbers: '',
+              invoiceNumbers: '',
+              description: addresses,
+              paymentAmount: data.totalAmount,
+              hasStripeFee: false,
+              source: 'paymode',
+              sourceEmailId: data.emailId,
+              notes: 'Auto-logged from PayMode reconciliation · ' + (result.applied || []).length + ' Monday jobs updated',
+            })
+          });
+        } catch(lerr) { console.warn('Ledger log failed (non-fatal):', lerr); }
+      }
+
+      btn.textContent = `✓ ${ok} paid${fail ? ' · ' + fail + ' failed' : ''}`;
+      btn.style.background = 'var(--green)';
+      setTimeout(() => {
+        closePayModeModal(false);
+        if (ctx.originalBtn) {
+          ctx.originalBtn.textContent = `✓ Processed (${ok} jobs)`;
+          ctx.originalBtn.style.background = 'var(--green)';
+          ctx.originalBtn.style.borderColor = 'var(--green)';
+        }
+        if (logLedger) {
+          window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/', '_blank');
+        }
+      }, 900);
+    } else {
+      btn.textContent = 'Error — retry';
+      btn.disabled = false;
+      alert('Could not process: ' + (result.error || 'unknown'));
+    }
+  } catch(err) {
+    btn.textContent = 'Error — retry';
+    btn.disabled = false;
+    console.error('PayMode confirm error:', err);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// DR HORTON VENDOR NOTIFICATION FLOW
+// ═════════════════════════════════════════════════════════════════════
+async function startDRHVendorNotification(btn, event) {
+  if (event) event.stopPropagation();
+  const emailId = btn.getAttribute('data-emailid');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Parsing POs (AI)...';
+
+  try {
+    const res = await fetch(`${WORKER_URL}/drhorton/vendor-notification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailId, confirm: false })
+    });
+    const data = await res.json();
+    if (data.action === 'preview') {
+      showDRHPOsModal(data, btn, origText);
+    } else {
+      btn.textContent = '⚠ ' + (data.error || 'Parse failed');
+      btn.style.color = 'var(--red)';
+      setTimeout(() => { btn.textContent = origText; btn.disabled = false; btn.style.color = ''; }, 3000);
+    }
+  } catch(err) {
+    btn.textContent = 'Error — retry';
+    btn.disabled = false;
+    console.error('DRH notification parse error:', err);
+  }
+}
+
+function showDRHPOsModal(data, originalBtn, origBtnText) {
+  const pos = data.pos || [];
+  const overlay = document.createElement('div');
+  overlay.id = 'drh-modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem;overflow-y:auto';
+
+  const poRows = pos.map((po, i) => {
+    const marketBadge = po.market === 'Little Rock'
+      ? '<span style="font-size:10px;background:#DCFCE7;color:#14532d;padding:2px 7px;border-radius:10px;font-weight:600">Little Rock</span>'
+      : po.market === 'Dallas'
+        ? '<span style="font-size:10px;background:#DBEAFE;color:#1e3a8a;padding:2px 7px;border-radius:10px;font-weight:600">Dallas</span>'
+        : '<span style="font-size:10px;background:#FEF3C7;color:#854d0e;padding:2px 7px;border-radius:10px;font-weight:600">Unknown market</span>';
+
+    return `<div class="drh-po-row" data-idx="${i}" style="border:1px solid var(--cream-dark);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:white">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <input type="checkbox" class="drh-include" data-idx="${i}" checked style="margin-right:6px">
+        <div style="font-weight:600;font-size:13px;flex:1"><input class="drh-address" data-idx="${i}" type="text" value="${esc(po.address||'')}" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit;font-weight:600"></div>
+        ${marketBadge}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px">
+        <div><label style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">PO #</label>
+          <input class="drh-po" data-idx="${i}" type="text" value="${esc(po.poNumber||'')}" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit"></div>
+        <div><label style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">DRH Job #</label>
+          <input class="drh-jobnum" data-idx="${i}" type="text" value="${esc(po.jobNumber||'')}" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit"></div>
+        <div><label style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:600">Cost Code</label>
+          <input class="drh-costcode" data-idx="${i}" type="text" value="${esc(po.costCode||'')}" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:inherit"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text-3)">Project: ${esc(po.projectName||'—')} · Lot/Block/Phase: ${esc(po.lotBlockPhase||'—')} · PM: <strong>${esc(po.suggestedPM||'—')}</strong></div>
+    </div>`;
+  }).join('');
+
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:22px;max-width:780px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.25);max-height:85vh;overflow-y:auto">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:4px">DR Horton ${esc(data.updateType||'')} Purchase Orders</div>
+      <div style="font-size:16px;font-weight:600;color:var(--navy);margin-bottom:2px">${data.totalPOs} PO${data.totalPOs!==1?'s':''} ready to create</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:16px">Review addresses + cost codes, uncheck any you don't want to create. Each checked row becomes a new item in Monday (Upcoming Jobs board).</div>
+
+      <div style="margin-bottom:16px">${poRows}</div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="closeDRHModal(true)" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">Cancel</button>
+        <button onclick="confirmDRHCreate(this)" style="padding:8px 16px;border-radius:6px;border:none;background:var(--navy);color:white;cursor:pointer;font-size:12px;font-weight:600">Create Monday jobs &amp; file email →</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  window._pendingDRH = { data, originalBtn, origBtnText };
+  overlay.addEventListener('click', ev => { if (ev.target === overlay) closeDRHModal(true); });
+}
+
+function closeDRHModal(restoreBtn) {
+  const overlay = document.getElementById('drh-modal-overlay');
+  if (overlay) overlay.remove();
+  const ctx = window._pendingDRH;
+  if (restoreBtn && ctx && ctx.originalBtn) {
+    ctx.originalBtn.textContent = ctx.origBtnText || '🏗️ Parse POs & create Monday jobs';
+    ctx.originalBtn.disabled = false;
+  }
+  window._pendingDRH = null;
+}
+
+async function confirmDRHCreate(btn) {
+  const ctx = window._pendingDRH;
+  if (!ctx) return;
+  const { data } = ctx;
+
+  // Collect the user-edited PO list
+  const edited = data.pos.map((po, i) => {
+    const inc = document.querySelector('.drh-include[data-idx="' + i + '"]');
+    if (!inc || !inc.checked) return null;
+    return {
+      ...po,
+      address: document.querySelector('.drh-address[data-idx="' + i + '"]').value.trim(),
+      poNumber: document.querySelector('.drh-po[data-idx="' + i + '"]').value.trim(),
+      jobNumber: document.querySelector('.drh-jobnum[data-idx="' + i + '"]').value.trim(),
+      costCode: document.querySelector('.drh-costcode[data-idx="' + i + '"]').value.trim(),
+    };
+  }).filter(Boolean);
+
+  if (!edited.length) { alert('Nothing to create — select at least one PO.'); return; }
+
+  btn.textContent = 'Creating...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${WORKER_URL}/drhorton/vendor-notification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailId: data.emailId, confirm: true, pos: edited })
+    });
+    const result = await res.json();
+
+    if (result.action === 'jobs_created') {
+      const ok = (result.created || []).length;
+      const fail = (result.failed || []).length;
+      btn.textContent = `✓ ${ok} created${fail ? ' · ' + fail + ' failed' : ''}`;
+      btn.style.background = 'var(--green)';
+      setTimeout(() => {
+        closeDRHModal(false);
+        if (ctx.originalBtn) {
+          ctx.originalBtn.textContent = `✓ ${ok} jobs created`;
+          ctx.originalBtn.style.background = 'var(--green)';
+          ctx.originalBtn.style.borderColor = 'var(--green)';
+        }
+      }, 900);
+    } else {
+      btn.textContent = 'Error — retry';
+      btn.disabled = false;
+      alert('Could not create: ' + (result.error || 'unknown'));
+    }
+  } catch(err) {
+    btn.textContent = 'Error — retry';
+    btn.disabled = false;
+    console.error('DRH confirm error:', err);
+  }
+}
+
 function renderPriority(items){
   const el=document.getElementById('priority-list');
   if(!items.length){el.innerHTML='<div class="empty">No priority items — clear board!</div>';return;}
@@ -2095,12 +2578,30 @@ function buildActions(item){
   const isSubInvoice = tags.includes('sub-invoice');
   const isNewJob = type==='new_job' || type==='change_order' || tags.includes('new_job') || tags.includes('change_order');
 
+  // Distinct DR Horton flows — the two most structured inbound streams for them
+  const isPayMode = type === 'paymode_payment' || tags.includes('paymode');
+  const isDRHVendorNotif = type === 'drh_vendor_notification' || tags.includes('vendor_notification');
+
   // A "payment-related" item is one that touches an existing job's money flow,
   // not a new-job creation event. For these we never want "Create Monday job"
   // — we want a payment-status update on the existing job.
-  const isPaymentRelated = isInvoiceSent || isACH || isPayment || isSubInvoice;
+  const isPaymentRelated = isInvoiceSent || isACH || isPayment || isSubInvoice || isPayMode;
 
   const _ci = cacheEmail(item);
+
+  // PayMode reconciliation — highest priority, surface a single primary action
+  if(isPayMode) {
+    btns.push(`<button class="act-btn primary" style="background:#0D1B2A;border-color:#0D1B2A"
+      data-emailid="${esc(item.id||'')}"
+      onclick="startPayModeReconcile(this,event)">📄 Process PayMode payment</button>`);
+  }
+
+  // DR Horton Vendor Notification — parse and bulk-create Monday jobs
+  if(isDRHVendorNotif) {
+    btns.push(`<button class="act-btn primary" style="background:#0D1B2A;border-color:#0D1B2A"
+      data-emailid="${esc(item.id||'')}"
+      onclick="startDRHVendorNotification(this,event)">🏗️ Parse POs &amp; create Monday jobs</button>`);
+  }
 
   if(isApprove)
     btns.push(`<button class="act-btn approve" onclick="window.open('https://buildertrend.net','_blank');event.stopPropagation()">Approve in BuilderTrend ↗</button>`);
@@ -2122,7 +2623,7 @@ function buildActions(item){
   if(isACH)
     btns.push(`<button class="act-btn" onclick="window.open('https://erikagonzalez103-hash.github.io/eridion-ledger/','_blank');event.stopPropagation()">Log to Profit First Ledger ↗</button>`);
 
-  if(isPayment && !isSubInvoice)
+  if(isPayment && !isSubInvoice && !isPayMode)
     btns.push(`<button class="act-btn primary" onclick="window.open('https://erikagonzalez103-hash.github.io/order-tracker/','_blank');event.stopPropagation()">Open order tracker ↗</button>`);
 
   if(isSubInvoice)
