@@ -693,8 +693,8 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
 </nav>
 <div class="modebar">
   <button class="mode-btn active" onclick="setMode('standard',this)">Eridion</button>
-  <button class="mode-btn" onclick="setMode('fifa',this)">FIFA 2026</button>
-  <button class="mode-btn" onclick="setMode('casaverde',this)">Casa Verde</button>
+  <button class="mode-btn" onclick="setMode('pulse',this)">Pulse</button>
+  <button class="mode-btn" onclick="setMode('quinta',this)">Quinta &amp; Co.</button>
   <button class="mode-btn" onclick="setMode('herdallas',this)">HER Dallas</button>
 </div>
 
@@ -1027,7 +1027,7 @@ function getDemoData() {
       { id:'demo-p1h', from:'Eridion Glass AR', subject:'Invoice #4818 — Conway model home shower glass', preview:'Invoice for $3,650.00 — Rausch Coleman — Conway model home shower glass.', type:'payment', tags:['invoice-sent','payment'], time:t(7,48), description:'Conway model home - shower glass', builder:'Rausch Coleman', amount:3650, invoiceDate:new Date(Date.now()-15*86400000).toISOString() },
       // Non-receivable priority items — these stay in the Priority list
       { id:'demo-p2', from:'BuilderTrend Notification', subject:'Approval required: 9820 Juniper — shower enclosure PO', preview:'A new purchase order requires your approval in BuilderTrend. Job: 9820 Juniper Ridge.', type:'po', tags:['po','approve'], time:t(7,45), fromEmail:'notifications@buildertrend.net' },
-      { id:'demo-p3', from:'Maria Chen', subject:'RE: Casa Verde bid — updated measurements', preview:'Erika, I updated the measurements for the storefront glass. Can you send a revised quote by EOD?', type:'bid', tags:['bid','casaverde'], time:t(9,30) },
+      { id:'demo-p3', from:'Sarah Mitchell', subject:'RE: Pulse vendor onboarding — confirmation', preview:'Erika, confirming our spot in the Pulse pre-launch group. Need anything else from us before the World Cup window?', type:'inquiry', tags:['pulse'], time:t(9,30) },
       { id:'demo-p4', from:'Zelle Notification', subject:'Payment received: $3,450.00 from Hines Homes', preview:'You received a Zelle payment of $3,450.00 from Hines Homes LLC.', type:'payment', tags:['ach','payment'], time:t(6,55), builder:'Hines Homes', amount:3450 },
       { id:'demo-p5', from:'Tony Martinez', subject:'Reminder: Invoice overdue — 7710 Bluebonnet staircase railing', preview:'Hi Erika, just a reminder that our invoice for the staircase railing at 7710 Bluebonnet is now 15 days past due.', type:'urgent', tags:['urgent','sub-invoice'], time:t(8,40), paymentMethod:'Zelle' },
       { id:'demo-p6', from:'FHC Glass Supply', subject:'Order confirmation #FHC-29841 — tempered panels', preview:'Your order for 12x tempered glass panels has been confirmed. Estimated delivery: April 18.', type:'payment', tags:['payment','fhc'], time:t(7,20) },
@@ -1115,7 +1115,7 @@ function getDemoData() {
       { id:'demo-i2', from:'Lupe Hernandez', subject:'Team lunch Friday?', preview:'Hey! Want to do team lunch this Friday? Thinking BBQ.', time:t(10,0) },
       { id:'demo-i3', from:'HER Dallas Events', subject:'May networking mixer — RSVP by April 18', preview:'You are invited to the HER Dallas May networking mixer at The Adolphus Hotel.', time:t(8,20) },
       { id:'demo-i4', from:'QuickBooks Online', subject:'Weekly P&L summary — Eridion Glass LLC', preview:'Your weekly profit & loss summary is ready. Revenue: $12,450. Expenses: $8,210.', time:t(7,0) },
-      { id:'demo-i5', from:'FIFA 2026 Dallas Host Committee', subject:'Vendor badge pickup — credential instructions', preview:'Your vendor credentials for FIFA World Cup 2026 Dallas matches are ready for pickup.', time:t(6,30) },
+      { id:'demo-i5', from:'Quinta &amp; Co.', subject:'Cohort 2 signup — first registration came in', preview:'Heads up — first signup for the May "Claude for Beginners" cohort just hit the form.', time:t(6,30) },
     ],
     fridayBanner: null,
     cashflowMTD: {
@@ -1666,7 +1666,7 @@ function avClass(type){
 }
 
 function tagLabel(t){
-  return {'sub-invoice':'Sub invoice','new_client':'New client','new_job':'New Job','change_order':'Change order','casaverde':'Casa Verde','herdallas':'HER Dallas'}[t]||(t||'').toUpperCase();
+  return {'sub-invoice':'Sub invoice','new_client':'New client','new_job':'New Job','change_order':'Change order','pulse':'Pulse','quinta':'Quinta & Co.','herdallas':'HER Dallas'}[t]||(t||'').toUpperCase();
 }
 
 function renderReceivables(items){
@@ -3293,7 +3293,13 @@ async function loadFranciscoActivity() {
     if (!panel) return;
 
     const pendingList = (pending.pending || []).slice(0, 10);
-    const recentActions = (actions.actions || []).slice(0, 5);
+
+    // Only show actions from the last 24 hours — older noise rolls off automatically
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - TWENTY_FOUR_HOURS;
+    const recentActions = (actions.actions || [])
+      .filter(a => a.timestamp && new Date(a.timestamp).getTime() >= cutoff)
+      .slice(0, 5);
 
     if (!pendingList.length && !recentActions.length) {
       panel.style.display = 'none';
@@ -3963,8 +3969,15 @@ async function paySubNotifyDion(cacheIdx, btn, event) {
 }
 
 // Init
-const saved=localStorage.getItem('eridion_mode');
-if(saved){const b=document.querySelector(`[onclick*="'${saved}'"]`);if(b)setMode(saved,b);}
+const VALID_MODES = ['standard','pulse','quinta','herdallas'];
+const saved = localStorage.getItem('eridion_mode');
+if (saved && VALID_MODES.includes(saved)) {
+  const b = document.querySelector(`[onclick*="'${saved}'"]`);
+  if (b) setMode(saved, b);
+} else if (saved) {
+  // Stale mode from a previous version (fifa, casaverde, etc.) — clear it
+  localStorage.removeItem('eridion_mode');
+}
 syncAll();
 
 /* ═══════════════════════════════════════════════════════
