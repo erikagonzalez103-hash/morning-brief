@@ -12,6 +12,8 @@
   --red:#C0392B;--red-soft:#FDF0EE;--amber:#D68910;--amber-soft:#FEF9EC;
   --teal:#1A7A7A;--teal-soft:#EAF5F5;--purple:#6B4C9A;--purple-soft:#F2EDFA;
   --text:#1B2A4A;--text-2:#4A5568;--text-3:#8A95A3;--border:#DDD6CA;--white:#FFFFFF;
+  --pink:#B83A6B;--pink-soft:#FBEEF3;--blue:#2C5AA0;--blue-soft:#EDF2FA;
+  --orange:#B8651A;--orange-soft:#FFF4E5;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);color:var(--text);min-height:100vh;font-size:14px;}
@@ -439,19 +441,26 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
 .ts-count-tab.active .ct-num.done{color:var(--green);}
 
 .ts-add{
-  padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:6px;
-  flex-shrink:0;background:var(--cream);
+  padding:10px 14px;border-bottom:1px solid var(--border);
+  flex-shrink:0;background:var(--cream);display:flex;flex-direction:column;gap:6px;
 }
-.ts-add input{
-  flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;
-  font-size:12px;background:var(--white);color:var(--text);font-family:inherit;
+.ts-add-row{display:flex;gap:6px;}
+.ts-add input[type="text"]{
+  flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;
+  font-size:13px;background:var(--white);color:var(--text);font-family:inherit;
 }
-.ts-add input:focus{outline:none;border-color:var(--navy);}
-.ts-add button{
-  padding:7px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;
+.ts-add input[type="text"]:focus{outline:none;border-color:var(--navy);}
+.ts-add select{
+  flex:1;padding:8px 8px;border:1px solid var(--border);border-radius:6px;
+  font-size:11px;background:var(--white);color:var(--text);font-family:inherit;
+  font-weight:600;cursor:pointer;min-width:0;
+}
+.ts-add select:focus{outline:none;border-color:var(--navy);}
+.ts-add button.ts-add-btn{
+  padding:8px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;
   cursor:pointer;background:var(--navy);color:white;white-space:nowrap;transition:background .15s;
 }
-.ts-add button:hover{background:var(--green);}
+.ts-add button.ts-add-btn:hover{background:var(--green);}
 
 .ts-body{flex:1;overflow-y:auto;overflow-x:hidden;}
 
@@ -516,6 +525,145 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
 .ai-sug-btn.p3-btn{color:var(--teal);border-color:var(--teal);}
 
 .ts-empty{padding:30px 16px;text-align:center;color:var(--text-3);font-size:12px;line-height:1.5;}
+
+/* Project pill (NEW) */
+.task-project{
+  font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;
+  letter-spacing:.04em;cursor:pointer;display:inline-flex;align-items:center;gap:3px;
+}
+.task-project::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;}
+.proj-pulse{background:var(--purple-soft);color:var(--purple);}
+.proj-eridion{background:var(--blue-soft);color:var(--blue);}
+.proj-quinta{background:var(--pink-soft);color:var(--pink);}
+.proj-her{background:var(--orange-soft);color:var(--orange);}
+.proj-cert{background:var(--teal-soft);color:var(--teal);}
+.proj-other{background:var(--cream-dark);color:var(--text-2);}
+
+/* Francisco toggle + mini-chat (NEW) */
+.francisco-toggle{
+  background:linear-gradient(90deg,rgba(201,168,76,.08) 0%,rgba(201,168,76,0) 100%);
+  border:1px dashed var(--gold);border-radius:6px;padding:7px 10px;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  cursor:pointer;color:var(--navy);font-size:11px;font-weight:600;font-family:inherit;
+  width:100%;transition:background .15s;
+}
+.francisco-toggle:hover{background:rgba(201,168,76,.15);}
+.francisco-toggle-left{display:flex;align-items:center;gap:6px;}
+.francisco-icon{
+  width:18px;height:18px;border-radius:50%;background:var(--navy-deep);
+  color:var(--gold);font-size:10px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;font-family:'DM Serif Display',serif;
+}
+.francisco-panel{
+  display:none;background:white;border-bottom:1px solid var(--border);
+  flex-direction:column;flex-shrink:0;max-height:50vh;
+}
+.francisco-panel.open{display:flex;}
+.francisco-header{
+  background:var(--navy-deep);color:var(--cream);padding:10px 14px;
+  display:flex;align-items:center;justify-content:space-between;font-size:11px;
+  text-transform:uppercase;letter-spacing:.06em;font-weight:600;
+}
+.francisco-header-left{display:flex;align-items:center;gap:8px;}
+.francisco-header .francisco-icon{background:var(--gold);color:var(--navy-deep);}
+.francisco-status{
+  width:6px;height:6px;border-radius:50%;background:var(--green-light);
+  box-shadow:0 0 0 2px rgba(64,145,108,.2);
+}
+.francisco-close{background:none;border:none;color:rgba(255,255,255,.5);font-size:16px;cursor:pointer;}
+.francisco-close:hover{color:white;}
+.francisco-messages{
+  padding:10px 14px;overflow-y:auto;flex:1;min-height:60px;display:flex;
+  flex-direction:column;gap:8px;background:var(--cream);
+}
+.fmsg{font-size:12px;line-height:1.45;padding:8px 10px;border-radius:8px;max-width:90%;}
+.fmsg-user{background:var(--navy);color:white;align-self:flex-end;border-bottom-right-radius:3px;}
+.fmsg-fran{background:white;border:1px solid var(--border);color:var(--text);align-self:flex-start;border-bottom-left-radius:3px;}
+.fmsg-preview{background:white;border:1px solid var(--gold);border-radius:8px;padding:8px 10px;margin-top:4px;}
+.fmsg-preview-label{font-size:9px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
+.fmsg-preview-text{font-size:12px;color:var(--text);font-weight:500;margin-bottom:6px;}
+.fmsg-preview-meta{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;}
+.fmsg-preview-actions{display:flex;gap:5px;flex-wrap:wrap;}
+.fmsg-preview-btn{
+  font-size:10px;font-weight:600;padding:5px 10px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--border);background:white;color:var(--text-2);transition:all .15s;
+}
+.fmsg-preview-btn.confirm{background:var(--navy);color:white;border-color:var(--navy);}
+.fmsg-preview-btn.confirm:hover{background:var(--green);border-color:var(--green);}
+.fmsg-preview-btn:hover{background:var(--cream);}
+.francisco-input{display:flex;gap:6px;padding:8px 14px;border-top:1px solid var(--border);background:white;}
+.francisco-input input{
+  flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;
+  font-size:13px;background:var(--white);font-family:inherit;
+}
+.francisco-input input:focus{outline:none;border-color:var(--navy);}
+.francisco-input button{
+  padding:8px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;
+  cursor:pointer;background:var(--gold);color:var(--navy-deep);transition:background .15s;
+}
+.francisco-input button:hover{background:var(--gold-light);}
+
+/* Archive callout (NEW) */
+.archive-callout{flex-shrink:0;border-top:1px solid var(--border);background:var(--cream);}
+.archive-trigger{
+  width:100%;padding:11px 14px;background:transparent;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;
+  font-family:inherit;color:var(--text-2);font-size:11px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.06em;transition:background .15s;
+}
+.archive-trigger:hover{background:var(--cream-dark);}
+.archive-trigger-left{display:flex;align-items:center;gap:8px;}
+.archive-icon-sm{
+  width:16px;height:16px;border-radius:4px;background:var(--gold);
+  color:var(--navy-deep);font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+}
+.archive-count{
+  font-family:'DM Serif Display',serif;font-size:13px;color:var(--navy);
+  background:white;padding:2px 8px;border-radius:10px;border:1px solid var(--border);
+  text-transform:none;letter-spacing:0;
+}
+.archive-chevron{transition:transform .25s;font-size:14px;color:var(--text-3);}
+.archive-callout.open .archive-chevron{transform:rotate(180deg);}
+.archive-panel{max-height:0;overflow:hidden;transition:max-height .3s ease;background:white;border-top:1px solid transparent;}
+.archive-callout.open .archive-panel{max-height:60vh;border-top-color:var(--border);overflow-y:auto;}
+.archive-controls{
+  padding:10px 14px;border-bottom:1px solid var(--cream-dark);
+  display:flex;gap:6px;align-items:center;background:var(--cream);
+}
+.archive-search{
+  flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:5px;
+  font-size:11px;background:white;font-family:inherit;
+}
+.archive-search:focus{outline:none;border-color:var(--navy);}
+.archive-filter{
+  padding:6px 8px;border:1px solid var(--border);border-radius:5px;
+  font-size:11px;background:white;font-family:inherit;color:var(--text);font-weight:600;cursor:pointer;
+}
+.archive-export{
+  padding:6px 10px;background:var(--navy);color:white;border:none;border-radius:5px;
+  font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;
+}
+.archive-export:hover{background:var(--green);}
+.archive-row{
+  padding:9px 14px;border-bottom:1px solid var(--cream-dark);
+  display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start;font-size:12px;
+}
+.archive-row:hover{background:var(--cream);}
+.archive-row-text{color:var(--text);line-height:1.35;font-weight:500;}
+.archive-row-meta{display:flex;gap:5px;align-items:center;margin-top:4px;flex-wrap:wrap;}
+.archive-date{font-size:9px;color:var(--text-3);white-space:nowrap;font-weight:600;}
+.archive-restore{
+  background:none;border:none;color:var(--text-3);font-size:12px;cursor:pointer;
+  opacity:0;transition:opacity .15s;padding:2px 4px;
+}
+.archive-row:hover .archive-restore{opacity:1;}
+.archive-restore:hover{color:var(--green);}
+.archive-empty{padding:30px 16px;text-align:center;color:var(--text-3);font-size:12px;}
+.archive-summary{
+  padding:8px 14px;background:var(--navy-deep);color:var(--cream);font-size:10px;
+  text-align:center;letter-spacing:.04em;text-transform:uppercase;font-weight:600;
+}
 
 @media(max-width:900px){
   .task-sidebar{width:300px;right:-310px;}
@@ -678,16 +826,88 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     <div class="ts-count-tab" data-filter="p3" onclick="setTaskFilter('p3',this)">
       <span class="ct-num p3" id="tc-p3">0</span>P3
     </div>
-    <div class="ts-count-tab" data-filter="done" onclick="setTaskFilter('done',this)">
-      <span class="ct-num done" id="tc-done">0</span>Done
-    </div>
   </div>
   <div class="ts-add">
-    <input type="text" id="task-input" placeholder="Add a task..." onkeydown="if(event.key==='Enter')addManualTask()">
-    <button onclick="addManualTask()">+ Add</button>
+    <div class="ts-add-row">
+      <input type="text" id="task-input" placeholder="Add a task..." onkeydown="if(event.key==='Enter')addManualTask()">
+      <button class="ts-add-btn" onclick="addManualTask()">+ Add</button>
+    </div>
+    <div class="ts-add-row">
+      <select id="task-project-select">
+        <option value="eridion">⬤ Eridion</option>
+        <option value="pulse">⬤ Pulse</option>
+        <option value="quinta">⬤ Quinta &amp; Co.</option>
+        <option value="her">⬤ HER Dallas</option>
+        <option value="cert">⬤ Certifications</option>
+        <option value="other">⬤ Other</option>
+      </select>
+      <select id="task-priority-select">
+        <option value="p2">Priority: P2</option>
+        <option value="p1">Priority: P1</option>
+        <option value="p3">Priority: P3</option>
+      </select>
+    </div>
+    <button class="francisco-toggle" onclick="toggleFranciscoPanel()">
+      <span class="francisco-toggle-left">
+        <span class="francisco-icon">F</span>
+        Talk to Francisco
+      </span>
+      <span style="font-size:10px;color:var(--text-3);font-weight:500;">type naturally →</span>
+    </button>
   </div>
+
+  <!-- Francisco mini-chat (NEW) -->
+  <div class="francisco-panel" id="francisco-panel">
+    <div class="francisco-header">
+      <div class="francisco-header-left">
+        <span class="francisco-icon">F</span>
+        <span class="francisco-status"></span>
+        Francisco
+      </div>
+      <button class="francisco-close" onclick="toggleFranciscoPanel()">✕</button>
+    </div>
+    <div class="francisco-messages" id="francisco-messages">
+      <div class="fmsg fmsg-fran">Hey Erika. Tell me what you need to do — I'll tag the priority and project.<br><br><span style="font-size:10px;color:var(--text-3);">Try: "follow up with Pennington for billing, urgent" or "queue WOSB cert, low priority"</span></div>
+    </div>
+    <div class="francisco-input">
+      <input type="text" id="francisco-input" placeholder="Tell Francisco what to add..." onkeydown="if(event.key==='Enter')askFrancisco()">
+      <button onclick="askFrancisco()">Send</button>
+    </div>
+  </div>
+
   <div id="ai-suggest-area"></div>
   <div class="ts-body" id="task-list"></div>
+
+  <!-- Completed Archive callout (NEW) -->
+  <div class="archive-callout" id="archive-callout">
+    <button class="archive-trigger" onclick="toggleArchive()">
+      <span class="archive-trigger-left">
+        <span class="archive-icon-sm">✓</span>
+        Completed Archive
+      </span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <span class="archive-count" id="archive-count">0</span>
+        <span class="archive-chevron">▾</span>
+      </span>
+    </button>
+    <div class="archive-panel">
+      <div class="archive-controls">
+        <input type="text" class="archive-search" id="archive-search" placeholder="Search archive..." oninput="renderArchive()">
+        <select class="archive-filter" id="archive-filter" onchange="renderArchive()">
+          <option value="all">All projects</option>
+          <option value="pulse">Pulse</option>
+          <option value="eridion">Eridion</option>
+          <option value="quinta">Quinta &amp; Co.</option>
+          <option value="her">HER Dallas</option>
+          <option value="cert">Certifications</option>
+          <option value="other">Other</option>
+        </select>
+        <button class="archive-export" onclick="exportArchive()">Export CSV</button>
+      </div>
+      <div id="archive-list"></div>
+      <div class="archive-summary" id="archive-summary">0 completed · 0 this year</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -3752,23 +3972,51 @@ syncAll();
    ═══════════════════════════════════════════════════════ */
 
 let tasks = [];
+let archive = [];
 let taskFilter = 'active';
 const TASKS_KEY = 'eridion_tasks';
+const ARCHIVE_KEY = 'eridion_tasks_archive';
+
+// ─── Project metadata (NEW) ───
+const PROJECTS = {
+  pulse:    {label:'Pulse',           cls:'proj-pulse'},
+  eridion:  {label:'Eridion',         cls:'proj-eridion'},
+  quinta:   {label:'Quinta',          cls:'proj-quinta'},
+  her:      {label:'HER Dallas',      cls:'proj-her'},
+  cert:     {label:'Certifications',  cls:'proj-cert'},
+  other:    {label:'Other',           cls:'proj-other'},
+};
+const PROJECT_ORDER = ['eridion','pulse','quinta','her','cert','other'];
+
+function migrateTaskShape(t){
+  // Backwards-compat: existing tasks won't have a project field.
+  if(!t.project) t.project = 'eridion';
+  return t;
+}
 
 // ─── Persistence (Worker KV primary, localStorage fallback) ───
 async function loadTasks() {
+  // Load archive first (always localStorage — durable record)
+  loadArchive();
+
   // Try Worker first
   try {
     const res = await fetch(`${WORKER_URL}/tasks`);
     if (res.ok) {
       const data = await res.json();
       if (data.tasks && data.tasks.length) {
-        tasks = data.tasks;
-        // Clear done tasks from previous days
+        tasks = data.tasks.map(migrateTaskShape);
+        // Migrate done tasks from prior days into the archive (don't delete)
         const today = new Date().toDateString();
-        tasks = tasks.filter(t => !t.done || t.doneDate === today);
+        const stale = tasks.filter(t => t.done && t.doneDate !== today);
+        if (stale.length) {
+          stale.forEach(t => archiveTask(t));
+          tasks = tasks.filter(t => !t.done || t.doneDate === today);
+          saveArchive();
+        }
         localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
         renderTasks();
+        renderArchive();
         updateTaskBadge();
         return;
       }
@@ -3778,13 +4026,41 @@ async function loadTasks() {
   // Fall back to localStorage
   try {
     const raw = localStorage.getItem(TASKS_KEY);
-    tasks = raw ? JSON.parse(raw) : [];
+    tasks = raw ? JSON.parse(raw).map(migrateTaskShape) : [];
     const today = new Date().toDateString();
-    tasks = tasks.filter(t => !t.done || t.doneDate === today);
+    const stale = tasks.filter(t => t.done && t.doneDate !== today);
+    if (stale.length) {
+      stale.forEach(t => archiveTask(t));
+      tasks = tasks.filter(t => !t.done || t.doneDate === today);
+      saveArchive();
+    }
     saveTasks();
   } catch(e) { tasks = []; }
   renderTasks();
+  renderArchive();
   updateTaskBadge();
+}
+
+// ─── Archive persistence (NEW, localStorage only — durable) ───
+function loadArchive() {
+  try {
+    const raw = localStorage.getItem(ARCHIVE_KEY);
+    archive = raw ? JSON.parse(raw) : [];
+  } catch(e) { archive = []; }
+}
+function saveArchive() {
+  try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archive)); }
+  catch(e) { console.error('Archive save failed:', e); }
+}
+function archiveTask(t) {
+  archive.unshift({
+    id: 'a_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    text: t.text,
+    project: t.project || 'eridion',
+    priority: t.priority || 'p2',
+    completedAt: t.doneDate ? new Date(t.doneDate).toISOString() : new Date().toISOString(),
+    sourceEmail: t.email ? { from: t.email.from, subject: t.email.subject } : null,
+  });
 }
 
 function saveTasks() {
@@ -3825,18 +4101,22 @@ function setTaskFilter(filter, tab) {
 // ─── Add manual task ───
 function addManualTask() {
   const input = document.getElementById('task-input');
+  const projSel = document.getElementById('task-project-select');
+  const priSel = document.getElementById('task-priority-select');
   const text = input.value.trim();
   if (!text) return;
   tasks.unshift({
     id: 'task_' + Date.now(),
     text,
-    priority: 'p2', // default
+    project: projSel ? projSel.value : 'eridion',
+    priority: priSel ? priSel.value : 'p2',
     email: null,
     done: false,
     doneDate: null,
     createdAt: new Date().toISOString(),
   });
   input.value = '';
+  if (priSel) priSel.value = 'p2'; // reset to default
   saveTasks();
   renderTasks();
 }
@@ -3857,6 +4137,7 @@ function addEmailTask(from, subject, preview, emailId, builder) {
     id: 'task_' + Date.now(),
     text: '', // will be filled by AI
     priority: 'p2', // will be suggested by AI
+    project: 'eridion', // default — email-sourced tasks are Eridion ops
     email: { id: emailId, from, subject, builder },
     done: false,
     doneDate: null,
@@ -3970,15 +4251,34 @@ function acceptSuggestion(taskId, priority, actionText) {
   document.getElementById('ai-suggest-area').innerHTML = '';
 }
 
-// ─── Complete task (strikethrough + file email) ───
+// ─── Complete task (archive + file email) ───
 async function completeTask(taskId) {
   const task = tasks.find(t => t.id === taskId);
   if (!task) return;
 
   task.done = !task.done;
   task.doneDate = task.done ? new Date().toDateString() : null;
+
+  // If marking done, push to archive and remove from active list
+  if (task.done) {
+    archiveTask(task);
+    saveArchive();
+    tasks = tasks.filter(t => t.id !== taskId);
+  }
+
   saveTasks();
   renderTasks();
+  renderArchive();
+
+  // Flash the archive callout to show where the task went
+  if (task.done) {
+    const callout = document.getElementById('archive-callout');
+    if (callout) {
+      callout.style.transition = 'background .3s';
+      callout.style.background = 'var(--green-light)';
+      setTimeout(() => { callout.style.background = ''; }, 400);
+    }
+  }
 
   // If marking done and has email — try to file it
   if (task.done && task.email?.id) {
@@ -3994,17 +4294,6 @@ async function completeTask(taskId) {
           jobAddress: address,
         })
       });
-      // Show filed indicator
-      const el = document.getElementById('ti-' + taskId);
-      if (el) {
-        const meta = el.querySelector('.task-meta');
-        if (meta) {
-          const filed = document.createElement('span');
-          filed.className = 'task-priority tp-p3';
-          filed.textContent = '✓ Filed';
-          meta.appendChild(filed);
-        }
-      }
     } catch(e) {
       console.error('File email failed:', e);
     }
@@ -4033,9 +4322,8 @@ function renderTasks() {
   const list = document.getElementById('task-list');
   if (!list) return;
 
-  // Count by category
+  // Count by category (active only — done tasks now live in archive)
   const active = tasks.filter(t => !t.done);
-  const done = tasks.filter(t => t.done);
   const p1 = active.filter(t => t.priority === 'p1');
   const p2 = active.filter(t => t.priority === 'p2');
   const p3 = active.filter(t => t.priority === 'p3');
@@ -4044,7 +4332,6 @@ function renderTasks() {
   set('tc-p1', p1.length);
   set('tc-p2', p2.length);
   set('tc-p3', p3.length);
-  set('tc-done', done.length);
 
   // Filter
   let filtered;
@@ -4052,7 +4339,6 @@ function renderTasks() {
   else if (taskFilter === 'p1') filtered = p1;
   else if (taskFilter === 'p2') filtered = p2;
   else if (taskFilter === 'p3') filtered = p3;
-  else if (taskFilter === 'done') filtered = done;
   else filtered = active;
 
   if (!filtered.length) {
@@ -4061,7 +4347,6 @@ function renderTasks() {
       p1: 'No P1 tasks. Nothing on fire!',
       p2: 'No P2 tasks.',
       p3: 'No P3 tasks.',
-      done: 'No completed tasks today.',
     };
     list.innerHTML = `<div class="ts-empty">${msgs[taskFilter] || msgs.active}</div>`;
     return;
@@ -4070,6 +4355,7 @@ function renderTasks() {
   list.innerHTML = filtered.map(t => {
     const priLabel = (t.priority || 'p2').toUpperCase();
     const priClass = 'tp-' + (t.priority || 'p2');
+    const proj = PROJECTS[t.project] || PROJECTS.other;
     const emailTag = t.email ? `<span class="task-email-tag" title="${esc(t.email.subject)}">✉ ${esc(t.email.from)}</span>` : '';
     const timeAgo = getTimeAgo(t.createdAt);
     return `<div class="task-item ${t.done ? 'is-done' : ''}" id="ti-${t.id}">
@@ -4078,6 +4364,7 @@ function renderTasks() {
         <div class="task-text">${esc(t.text)}</div>
         <div class="task-meta">
           <span class="task-priority ${priClass}" onclick="cyclePriority('${t.id}')" style="cursor:pointer" title="Click to change priority">${priLabel}</span>
+          <span class="task-project ${proj.cls}" onclick="cycleProject('${t.id}')" title="Click to change project">${proj.label}</span>
           ${emailTag}
           <span class="task-time">${timeAgo}</span>
         </div>
@@ -4085,15 +4372,16 @@ function renderTasks() {
       <div class="task-delete" onclick="deleteTask('${t.id}')" title="Remove">✕</div>
     </div>`;
   }).join('');
+}
 
-  // Show "Clear completed" button on Done tab
-  if (taskFilter === 'done' && done.length > 0) {
-    list.innerHTML += `<div style="padding:10px 14px;text-align:center">
-      <button onclick="clearDoneTasks()" style="font-size:11px;font-weight:600;padding:5px 14px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--text-3);cursor:pointer;transition:all .15s"
-        onmouseover="this.style.background='var(--red)';this.style.color='white';this.style.borderColor='var(--red)'"
-        onmouseout="this.style.background='var(--white)';this.style.color='var(--text-3)';this.style.borderColor='var(--border)'">Clear completed tasks</button>
-    </div>`;
-  }
+// ─── Cycle project inline ───
+function cycleProject(taskId) {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  const i = PROJECT_ORDER.indexOf(task.project);
+  task.project = PROJECT_ORDER[(i + 1) % PROJECT_ORDER.length];
+  saveTasks();
+  renderTasks();
 }
 
 function getTimeAgo(iso) {
@@ -4123,11 +4411,277 @@ function updateTaskBadge() {
 // Init tasks
 loadTasks();
 
-// Clear done tasks
+// Clear done tasks — legacy fn; done tasks now auto-archive on completion.
+// Kept for backwards-compat in case any UI still references it.
 function clearDoneTasks() {
+  const done = tasks.filter(t => t.done);
+  done.forEach(t => archiveTask(t));
   tasks = tasks.filter(t => !t.done);
+  saveArchive();
   saveTasks();
   renderTasks();
+  renderArchive();
+}
+
+/* ═══════════════════════════════════════════════════════
+   COMPLETED ARCHIVE — durable record for year-end rollup
+   ═══════════════════════════════════════════════════════ */
+function toggleArchive(forceOpen) {
+  const c = document.getElementById('archive-callout');
+  if (!c) return;
+  if (forceOpen === true) c.classList.add('open');
+  else c.classList.toggle('open');
+}
+
+function fmtArchiveDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+function renderArchive() {
+  const countEl = document.getElementById('archive-count');
+  const listEl = document.getElementById('archive-list');
+  const sumEl = document.getElementById('archive-summary');
+  if (!countEl || !listEl) return;
+
+  countEl.textContent = archive.length;
+
+  const search = (document.getElementById('archive-search')?.value || '').toLowerCase();
+  const projFilter = document.getElementById('archive-filter')?.value || 'all';
+
+  let filtered = archive;
+  if (search) filtered = filtered.filter(a => (a.text || '').toLowerCase().includes(search));
+  if (projFilter !== 'all') filtered = filtered.filter(a => a.project === projFilter);
+  filtered = [...filtered].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="archive-empty">No completed tasks match.</div>`;
+  } else {
+    listEl.innerHTML = filtered.map(a => {
+      const proj = PROJECTS[a.project] || PROJECTS.other;
+      return `<div class="archive-row">
+        <div>
+          <div class="archive-row-text">${esc(a.text)}</div>
+          <div class="archive-row-meta">
+            <span class="task-project ${proj.cls}">${proj.label}</span>
+            <span class="archive-date">${fmtArchiveDate(a.completedAt)}</span>
+          </div>
+        </div>
+        <button class="archive-restore" onclick="restoreFromArchive('${a.id}')" title="Restore to active">↺</button>
+      </div>`;
+    }).join('');
+  }
+
+  if (sumEl) {
+    const yr = new Date().getFullYear();
+    const ytd = archive.filter(a => new Date(a.completedAt).getFullYear() === yr).length;
+    sumEl.textContent = `${archive.length} completed · ${ytd} this year`;
+  }
+}
+
+function restoreFromArchive(id) {
+  const a = archive.find(x => x.id === id);
+  if (!a) return;
+  tasks.unshift({
+    id: 'task_' + Date.now(),
+    text: a.text,
+    project: a.project,
+    priority: a.priority || 'p2',
+    email: null,
+    done: false,
+    doneDate: null,
+    createdAt: new Date().toISOString(),
+  });
+  archive = archive.filter(x => x.id !== id);
+  saveArchive();
+  saveTasks();
+  renderTasks();
+  renderArchive();
+}
+
+function exportArchive() {
+  const projFilter = document.getElementById('archive-filter')?.value || 'all';
+  let rows = [...archive];
+  if (projFilter !== 'all') rows = rows.filter(a => a.project === projFilter);
+  rows = rows.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+
+  const csv = [
+    ['Line Item', 'Project', 'Priority', 'Date Completed'].join(','),
+    ...rows.map(a => [
+      `"${(a.text || '').replace(/"/g, '""')}"`,
+      `"${(PROJECTS[a.project] || PROJECTS.other).label}"`,
+      (a.priority || '').toUpperCase(),
+      new Date(a.completedAt).toISOString().slice(0, 10),
+    ].join(','))
+  ].join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `eridion-completed-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ═══════════════════════════════════════════════════════
+   FRANCISCO MINI-CHAT — natural-language task creation
+   ═══════════════════════════════════════════════════════ */
+function toggleFranciscoPanel() {
+  const p = document.getElementById('francisco-panel');
+  if (!p) return;
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) {
+    setTimeout(() => document.getElementById('francisco-input')?.focus(), 100);
+  }
+}
+
+function appendFranMsg(html, who) {
+  const box = document.getElementById('francisco-messages');
+  if (!box) return null;
+  const div = document.createElement('div');
+  div.className = 'fmsg fmsg-' + (who === 'user' ? 'user' : 'fran');
+  div.innerHTML = html;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+// Local NL parser — fast, offline, no API call.
+// Future: route through Cloudflare Worker /francisco/chat for richer parsing.
+function parseTaskFromText(input) {
+  let text = input.trim();
+  let priority = null, project = null;
+  let priMatched = null, projMatched = null;
+
+  const priRules = [
+    {p:'p1', re:/\b(p1|urgent|critical|asap|on\s+fire|fire|today|right\s+now|immediately|high\s*[- ]?\s*priority)\b/i},
+    {p:'p3', re:/\b(p3|low\s*[- ]?\s*priority|someday|later|when\s+i\s+can|nice\s*to\s*have|backlog|not\s+urgent)\b/i},
+    {p:'p2', re:/\b(p2|medium\s*[- ]?\s*priority|normal|this\s+week|soon)\b/i},
+  ];
+  for (const r of priRules) {
+    const m = text.match(r.re);
+    if (m) { priority = r.p; priMatched = m[0]; text = text.replace(r.re, ' ').replace(/\s+/g, ' ').trim(); break; }
+  }
+
+  const projRules = [
+    {p:'pulse',   re:/\b(pulse|momentum|world\s*cup\s*app|vendor\s+interview)\b/i},
+    {p:'cert',    re:/\b(cert|certification|nctrca|m\/?wbe|wbe|wosb|hub|dbe|sba|wbcs|txdot)\b/i},
+    {p:'her',     re:/\b(her\s*dallas|her\s*texas|hertx|jasmin|sponsor\s+crm|at&t\s+stadium|semifinal)\b/i},
+    {p:'quinta',  re:/\b(quinta|claude\s+for\s+beginners|workshop|cohort)\b/i},
+    {p:'eridion', re:/\b(eridion|glass|builder|monday|francisco|ledger|pennington|grand\s+homes|lingenfelter|hines|horton|dmarc|spf|dkim|profit\s+first|xero|smart\s+glazier|capital\s+one)\b/i},
+  ];
+  for (const r of projRules) {
+    const m = text.match(r.re);
+    if (m) { project = r.p; projMatched = m[0]; break; }
+  }
+
+  text = text.replace(/^[\s\-:,;]+|[\s\-:,;]+$/g, '').replace(/\s{2,}/g, ' ').replace(/\s+([,.])/g, '$1').trim();
+  text = text.replace(/^(remind\s+me\s+to|i\s+need\s+to|please\s+|let'?s\s+|need\s+to)\s*/i, '').trim();
+  if (text.length) text = text[0].toUpperCase() + text.slice(1);
+
+  return {
+    text: text || input.trim(),
+    priority: priority || 'p2',
+    project: project || 'eridion',
+    matched: { priority: priMatched, project: projMatched },
+  };
+}
+
+const _franCache = {};
+
+function askFrancisco() {
+  const inp = document.getElementById('francisco-input');
+  if (!inp) return;
+  const raw = inp.value.trim();
+  if (!raw) return;
+  inp.value = '';
+  appendFranMsg(esc(raw), 'user');
+
+  const thinking = appendFranMsg('<em style="color:var(--text-3)">thinking…</em>', 'fran');
+  setTimeout(() => {
+    if (thinking) thinking.remove();
+    const parsed = parseTaskFromText(raw);
+    const proj = PROJECTS[parsed.project];
+    const priLabel = parsed.priority.toUpperCase();
+    const id = 'preview_' + Date.now();
+    _franCache[id] = { ...parsed };
+
+    const inferredNotes = [];
+    if (parsed.matched.priority) inferredNotes.push(`<strong>${priLabel}</strong> from "${esc(parsed.matched.priority)}"`);
+    else inferredNotes.push(`<strong>P2</strong> by default`);
+    if (parsed.matched.project) inferredNotes.push(`<strong>${proj.label}</strong> from "${esc(parsed.matched.project)}"`);
+    else inferredNotes.push(`<strong>${proj.label}</strong> as a guess`);
+
+    appendFranMsg(`Got it. Here's how I'd file it:
+      <div class="fmsg-preview" id="${id}">
+        <div class="fmsg-preview-label">New task</div>
+        <div class="fmsg-preview-text">${esc(parsed.text)}</div>
+        <div class="fmsg-preview-meta" id="${id}-meta">
+          <span class="task-priority tp-${parsed.priority}">${priLabel}</span>
+          <span class="task-project ${proj.cls}">${proj.label}</span>
+        </div>
+        <div class="fmsg-preview-actions">
+          <button class="fmsg-preview-btn confirm" onclick="confirmFranTask('${id}')">Add task</button>
+          <button class="fmsg-preview-btn" onclick="bumpFranPriority('${id}')">Bump priority</button>
+          <button class="fmsg-preview-btn" onclick="cycleFranProject('${id}')">Wrong project</button>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--text-3);margin-top:6px;">→ ${inferredNotes.join(' · ')}</div>`, 'fran');
+  }, 350);
+}
+
+function _redrawFranPreview(id) {
+  const c = _franCache[id];
+  const meta = document.getElementById(id + '-meta');
+  if (!c || !meta) return;
+  const proj = PROJECTS[c.project];
+  meta.innerHTML = `<span class="task-priority tp-${c.priority}">${c.priority.toUpperCase()}</span>
+    <span class="task-project ${proj.cls}">${proj.label}</span>`;
+}
+
+function bumpFranPriority(id) {
+  const c = _franCache[id];
+  if (!c) return;
+  const cycle = { p2: 'p1', p1: 'p3', p3: 'p2' };
+  c.priority = cycle[c.priority] || 'p1';
+  _redrawFranPreview(id);
+}
+
+function cycleFranProject(id) {
+  const c = _franCache[id];
+  if (!c) return;
+  const i = PROJECT_ORDER.indexOf(c.project);
+  c.project = PROJECT_ORDER[(i + 1) % PROJECT_ORDER.length];
+  _redrawFranPreview(id);
+}
+
+function confirmFranTask(id) {
+  const c = _franCache[id];
+  if (!c) return;
+  tasks.unshift({
+    id: 'task_' + Date.now(),
+    text: c.text,
+    project: c.project,
+    priority: c.priority,
+    email: null,
+    done: false,
+    doneDate: null,
+    createdAt: new Date().toISOString(),
+  });
+  delete _franCache[id];
+  saveTasks();
+  renderTasks();
+
+  const el = document.getElementById(id);
+  if (el) {
+    el.style.borderColor = 'var(--green)';
+    const actions = el.querySelector('.fmsg-preview-actions');
+    if (actions) actions.innerHTML = `<span style="font-size:10px;color:var(--green);font-weight:700">✓ ADDED</span>`;
+  }
+  appendFranMsg(`Added. What else?`, 'fran');
 }
 
 // Keyboard shortcut: Ctrl+T to toggle sidebar
