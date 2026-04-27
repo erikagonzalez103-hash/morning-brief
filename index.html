@@ -603,6 +603,34 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
 }
 .francisco-input button:hover{background:var(--gold-light);}
 
+/* Mic button — sidebar variant (compact) */
+.francisco-mic{
+  padding:8px 10px;border:1px solid var(--border);border-radius:6px;
+  background:white;color:var(--text-2);font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;line-height:1;
+  transition:all .15s;
+}
+.francisco-mic:hover{background:var(--cream);color:var(--navy);border-color:var(--navy);}
+.francisco-mic.listening{
+  background:var(--red);color:white;border-color:var(--red);
+  animation:sidebarMicPulse 1.4s ease-in-out infinite;
+}
+.francisco-mic.listening:hover{background:#8a3030;border-color:#8a3030;}
+@keyframes sidebarMicPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.5);}
+  50%{box-shadow:0 0 0 6px rgba(192,57,43,0);}
+}
+.francisco-mic[disabled]{opacity:.4;cursor:not-allowed;}
+.francisco-listening-badge{
+  display:none;font-size:10px;color:var(--red);font-weight:600;
+  padding:6px 14px 0;text-align:center;
+}
+.francisco-listening-badge.visible{display:block;}
+.francisco-listening-badge::before{
+  content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--red);
+  margin-right:5px;vertical-align:middle;animation:sidebarMicPulse 1.4s ease-in-out infinite;
+}
+
 /* Archive callout (NEW) */
 .archive-callout{flex-shrink:0;border-top:1px solid var(--border);background:var(--cream);}
 .archive-trigger{
@@ -869,13 +897,23 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     <div class="francisco-messages" id="francisco-messages">
       <div class="fmsg fmsg-fran">Hey Erika. Tell me what you need to do — I'll tag the priority and project.<br><br><span style="font-size:10px;color:var(--text-3);">Try: "follow up with Pennington for billing, urgent" or "queue WOSB cert, low priority"</span></div>
     </div>
+    <div class="francisco-listening-badge" id="francisco-listening-badge">Listening… speak then tap Send</div>
     <div class="francisco-input">
       <input type="text" id="francisco-input" placeholder="Tell Francisco what to add..." onkeydown="if(event.key==='Enter')askFrancisco()">
+      <button class="francisco-mic" id="francisco-mic-btn" onclick="toggleSidebarMic()" title="Dictate" aria-label="Voice input">🎤</button>
       <button onclick="askFrancisco()">Send</button>
     </div>
   </div>
 
   <div id="ai-suggest-area"></div>
+  <div id="seed-import-banner" style="display:none;padding:12px 14px;background:linear-gradient(135deg,rgba(201,168,76,.12) 0%,rgba(201,168,76,.04) 100%);border-bottom:1px solid var(--border);">
+    <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">📥 Starter to-dos</div>
+    <div style="font-size:12px;color:var(--text-2);line-height:1.4;margin-bottom:8px;">Load 14 to-dos across Pulse, Eridion, Quinta, HER Dallas, and Certifications based on what we've talked through.</div>
+    <div style="display:flex;gap:6px;">
+      <button onclick="importSeedTasks()" style="flex:1;padding:7px 10px;background:var(--navy);color:white;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;">Import to-dos</button>
+      <button onclick="dismissSeedBanner()" style="padding:7px 10px;background:transparent;color:var(--text-3);border:1px solid var(--border);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;">No thanks</button>
+    </div>
+  </div>
   <div class="ts-body" id="task-list"></div>
 
   <!-- Completed Archive callout (NEW) -->
@@ -4031,6 +4069,7 @@ async function loadTasks() {
         renderTasks();
         renderArchive();
         updateTaskBadge();
+        showSeedBannerIfNeeded();
         return;
       }
     }
@@ -4052,6 +4091,7 @@ async function loadTasks() {
   renderTasks();
   renderArchive();
   updateTaskBadge();
+  showSeedBannerIfNeeded();
 }
 
 // ─── Archive persistence (NEW, localStorage only — durable) ───
@@ -4074,6 +4114,69 @@ function archiveTask(t) {
     completedAt: t.doneDate ? new Date(t.doneDate).toISOString() : new Date().toISOString(),
     sourceEmail: t.email ? { from: t.email.from, subject: t.email.subject } : null,
   });
+}
+
+/* ─── One-time seed import (Apr 27, 2026) ─── */
+const SEED_FLAG = 'eridion_tasks_seeded_v1';
+const SEED_TASKS = [
+  // Certifications — on the clock
+  {text:'Submit NCTRCA M/WBE application (due May 8)', project:'cert', priority:'p1'},
+  {text:'Start WOSB application via certifications.sba.gov', project:'cert', priority:'p2'},
+  {text:'Queue Texas HUB application (after NCTRCA)', project:'cert', priority:'p3'},
+  // Eridion — operational
+  {text:'Pennington billing follow-up — completed job never entered in Monday.com', project:'eridion', priority:'p1'},
+  {text:'Generate MS client secret + set 3 Cloudflare Worker env vars (Francisco)', project:'eridion', priority:'p1'},
+  {text:'Tighten DMARC policy on eridionglass.com from "none" to "reject"', project:'eridion', priority:'p2'},
+  {text:'Verify SPF and DKIM after DMARC change', project:'eridion', priority:'p2'},
+  // Pulse
+  {text:'Wire UI prototype to live Supabase momentum_scores view', project:'pulse', priority:'p1'},
+  {text:'Ship vendor interview guide as branded .docx for outreach', project:'pulse', priority:'p2'},
+  {text:'Decide: Netlify vs GitHub Pages for mobile sharing', project:'pulse', priority:'p3'},
+  // Quinta & Co.
+  {text:'Outline next module: APIs / connecting tools', project:'quinta', priority:'p2'},
+  {text:'Sketch "Things You Don\'t Learn in Business School" series arc', project:'quinta', priority:'p3'},
+  // HER Dallas
+  {text:'Update Sponsor CRM: bump DATA_VERSION on next deploy', project:'her', priority:'p2'},
+  {text:'Document contact changes (Anderson→Albright, Comerica→Fifth Third)', project:'her', priority:'p3'},
+];
+
+function shouldShowSeedBanner() {
+  if (localStorage.getItem(SEED_FLAG)) return false;
+  // Only show when there are very few tasks — don't bother an active user
+  const active = tasks.filter(t => !t.done);
+  return active.length < 5;
+}
+
+function showSeedBannerIfNeeded() {
+  const banner = document.getElementById('seed-import-banner');
+  if (!banner) return;
+  banner.style.display = shouldShowSeedBanner() ? 'block' : 'none';
+}
+
+function importSeedTasks() {
+  const now = Date.now();
+  // Reverse so the first item in the array ends up at the top of the list
+  SEED_TASKS.slice().reverse().forEach((s, i) => {
+    tasks.unshift({
+      id: 'task_seed_' + (now + i),
+      text: s.text,
+      project: s.project,
+      priority: s.priority,
+      email: null,
+      done: false,
+      doneDate: null,
+      createdAt: new Date(now + i).toISOString(),
+    });
+  });
+  localStorage.setItem(SEED_FLAG, '1');
+  saveTasks();
+  renderTasks();
+  showSeedBannerIfNeeded();
+}
+
+function dismissSeedBanner() {
+  localStorage.setItem(SEED_FLAG, '1');
+  showSeedBannerIfNeeded();
 }
 
 function saveTasks() {
@@ -4695,6 +4798,114 @@ function confirmFranTask(id) {
     if (actions) actions.innerHTML = `<span style="font-size:10px;color:var(--green);font-weight:700">✓ ADDED</span>`;
   }
   appendFranMsg(`Added. What else?`, 'fran');
+}
+
+/* ═══════════════════════════════════════════════════════
+   SIDEBAR MIC — talk-to-text for Francisco mini-chat
+   ═══════════════════════════════════════════════════════ */
+const _SidebarSR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let sidebarRecognition = null;
+let sidebarIsListening = false;
+let sidebarBaseTranscript = '';
+
+function initSidebarMic() {
+  const micBtn = document.getElementById('francisco-mic-btn');
+  if (!micBtn) return;
+  if (!_SidebarSR) {
+    micBtn.disabled = true;
+    micBtn.title = 'Voice input not supported in this browser. Try Chrome or Safari.';
+    return;
+  }
+  sidebarRecognition = new _SidebarSR();
+  sidebarRecognition.continuous = true;
+  sidebarRecognition.interimResults = true;
+  sidebarRecognition.lang = 'en-US';
+
+  sidebarRecognition.onresult = (event) => {
+    let finalTranscript = '';
+    let interimTranscript = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) finalTranscript += transcript;
+      else interimTranscript += transcript;
+    }
+    if (finalTranscript) {
+      sidebarBaseTranscript = sidebarBaseTranscript
+        ? sidebarBaseTranscript.replace(/\s+$/, '') + ' ' + finalTranscript.replace(/^\s+/, '')
+        : finalTranscript;
+    }
+    const input = document.getElementById('francisco-input');
+    if (input) {
+      input.value = (sidebarBaseTranscript + (interimTranscript ? ' ' + interimTranscript : '')).trim();
+    }
+  };
+
+  sidebarRecognition.onerror = (event) => {
+    console.warn('Sidebar speech error:', event.error);
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      alert('Microphone access was blocked. Allow microphone access in your browser settings to dictate to Francisco.');
+      stopSidebarListening();
+    } else if (event.error === 'audio-capture') {
+      alert('No microphone found. Make sure your device has a working mic.');
+      stopSidebarListening();
+    }
+    // 'no-speech' is silent — keep listening
+  };
+
+  sidebarRecognition.onend = () => {
+    // Auto-restart if user hasn't stopped (browsers cut off long sessions)
+    if (sidebarIsListening) {
+      try { sidebarRecognition.start(); } catch(e) {}
+    }
+  };
+}
+
+function toggleSidebarMic() {
+  if (!sidebarRecognition) {
+    alert('Voice input not supported in this browser. Try Chrome, Edge, or Safari.');
+    return;
+  }
+  if (sidebarIsListening) stopSidebarListening();
+  else startSidebarListening();
+}
+
+function startSidebarListening() {
+  // Auto-open the Francisco panel if it's collapsed
+  const panel = document.getElementById('francisco-panel');
+  if (panel && !panel.classList.contains('open')) {
+    panel.classList.add('open');
+  }
+  const input = document.getElementById('francisco-input');
+  sidebarBaseTranscript = input ? input.value : '';
+  sidebarIsListening = true;
+  document.getElementById('francisco-mic-btn')?.classList.add('listening');
+  document.getElementById('francisco-listening-badge')?.classList.add('visible');
+  try { sidebarRecognition.start(); } catch(e) {}
+  if (input) input.focus();
+}
+
+function stopSidebarListening() {
+  sidebarIsListening = false;
+  document.getElementById('francisco-mic-btn')?.classList.remove('listening');
+  document.getElementById('francisco-listening-badge')?.classList.remove('visible');
+  try { sidebarRecognition.stop(); } catch(e) {}
+  const input = document.getElementById('francisco-input');
+  sidebarBaseTranscript = input ? input.value : '';
+}
+
+// Stop listening when the message is sent
+const _origAskFrancisco = askFrancisco;
+askFrancisco = function() {
+  if (sidebarIsListening) stopSidebarListening();
+  sidebarBaseTranscript = '';
+  return _origAskFrancisco.apply(this, arguments);
+};
+
+// Init on DOM ready (handles both pre-DOMContentLoaded and post)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSidebarMic);
+} else {
+  initSidebarMic();
 }
 
 // Keyboard shortcut: Ctrl+T to toggle sidebar
