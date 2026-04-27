@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Francisco — Command Center</title>
+<style>
+:root{
+  --navy:#1C1F36; --navy-light:#2A2E4A; --cream:#F5EFE0; --cream-dark:#E8DFC9;
+  --gold:#CAA65F; --green:#2E6F4F; --red:#A33A3A; --amber:#D4A44C;
+  --text:#1C1F36; --text-2:#4A4E6E; --text-3:#8188A8; --border:#D8D3C0;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--cream);color:var(--text);min-height:100vh;}
+
+/* Top bar */
+.topbar{background:var(--navy);color:white;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.08);}
+.topbar-brand{display:flex;align-items:center;gap:10px;font-family:Georgia,serif;font-size:22px;font-weight:600;}
+.topbar-brand-tag{background:rgba(202,166,95,.2);color:#f0dcb8;padding:3px 8px;border-radius:4px;font-size:10px;font-family:-apple-system,sans-serif;font-weight:600;letter-spacing:.05em;text-transform:uppercase;}
+.topbar-right{display:flex;align-items:center;gap:16px;font-size:13px;}
+.topbar a{color:rgba(255,255,255,.7);text-decoration:none;font-size:12px;}
+.topbar a:hover{color:white;}
+
+/* Nav */
+.cc-nav{background:var(--navy);padding:0 1.5rem;display:flex;align-items:center;gap:20px;border-bottom:1px solid rgba(255,255,255,.08);height:40px;}
+.cc-nav-link{color:rgba(255,255,255,.6);text-decoration:none;font-size:13px;font-weight:500;padding:0 4px;height:100%;display:flex;align-items:center;border-bottom:2px solid transparent;}
+.cc-nav-link:hover{color:white;}
+.cc-nav-link.active{color:white;border-bottom-color:var(--gold);}
+
+/* Main chat layout */
+.chat-container{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 92px);background:var(--cream);}
+@media (max-width:768px){.chat-container{grid-template-columns:1fr;}.chat-sidebar{display:none;}}
+
+/* Sidebar — conversation list */
+.chat-sidebar{background:white;border-right:1px solid var(--border);overflow-y:auto;}
+.sidebar-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.sidebar-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);}
+.new-chat-btn{padding:5px 10px;background:var(--navy);color:white;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;}
+.new-chat-btn:hover{background:#2f3355;}
+.convo-list{padding:6px;}
+.convo-item{padding:10px 12px;border-radius:6px;cursor:pointer;margin-bottom:2px;}
+.convo-item:hover{background:var(--cream);}
+.convo-item.active{background:var(--cream-dark);}
+.convo-title{font-size:13px;font-weight:500;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.convo-preview{font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.convo-empty{padding:16px;color:var(--text-3);font-size:12px;text-align:center;font-style:italic;}
+
+/* Main chat pane */
+.chat-main{display:flex;flex-direction:column;background:var(--cream);}
+.chat-header{padding:16px 24px;border-bottom:1px solid var(--border);background:white;}
+.chat-header-title{font-size:16px;font-weight:600;color:var(--navy);display:flex;align-items:center;gap:8px;}
+.chat-header-dot{width:8px;height:8px;border-radius:50%;background:var(--green);}
+.chat-header-sub{font-size:11px;color:var(--text-3);margin-top:2px;}
+
+/* Messages */
+.messages{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:12px;}
+.msg{max-width:75%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;word-wrap:break-word;}
+.msg-user{background:var(--navy);color:white;border-bottom-right-radius:4px;margin-left:auto;}
+.msg-assistant{background:white;color:var(--text);border:1px solid var(--border);border-bottom-left-radius:4px;}
+.msg-assistant p{margin:0 0 8px 0;}
+.msg-assistant p:last-child{margin-bottom:0;}
+.msg-assistant ul,.msg-assistant ol{margin:6px 0 6px 20px;}
+.msg-assistant li{margin-bottom:3px;}
+.msg-assistant code{background:var(--cream);padding:1px 4px;border-radius:3px;font-size:12px;font-family:'SF Mono',Consolas,monospace;}
+.msg-assistant pre{background:var(--cream);padding:10px;border-radius:6px;overflow-x:auto;margin:6px 0;font-size:12px;}
+.msg-assistant pre code{background:none;padding:0;}
+.msg-timestamp{font-size:10px;color:var(--text-3);margin-top:2px;padding:0 6px;}
+.msg-typing{background:white;color:var(--text-3);border:1px solid var(--border);font-style:italic;}
+.typing-dots{display:inline-block;}
+.typing-dots span{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--text-3);margin:0 1px;animation:typingBounce 1.4s infinite;}
+.typing-dots span:nth-child(2){animation-delay:.2s;}
+.typing-dots span:nth-child(3){animation-delay:.4s;}
+@keyframes typingBounce{0%,60%,100%{opacity:.3;transform:translateY(0);}30%{opacity:1;transform:translateY(-3px);}}
+
+/* Welcome state */
+.welcome{text-align:center;padding:60px 24px;color:var(--text-3);}
+.welcome h2{color:var(--navy);font-family:Georgia,serif;font-size:28px;margin-bottom:8px;}
+.welcome p{font-size:14px;margin-bottom:20px;max-width:520px;margin-left:auto;margin-right:auto;line-height:1.6;}
+.welcome-prompts{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:600px;margin:0 auto;}
+.welcome-prompt{padding:10px 14px;background:white;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-2);transition:all .15s;}
+.welcome-prompt:hover{border-color:var(--navy);color:var(--navy);background:var(--cream-dark);}
+
+/* Input area */
+.chat-input-wrap{border-top:1px solid var(--border);background:white;padding:12px 24px;}
+.chat-input-inner{display:flex;gap:8px;align-items:flex-end;max-width:900px;margin:0 auto;}
+.chat-input{flex:1;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;font-family:inherit;resize:none;min-height:42px;max-height:200px;line-height:1.4;outline:none;}
+.chat-input:focus{border-color:var(--navy);}
+.chat-send{background:var(--navy);color:white;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;height:42px;}
+.chat-send:hover{background:#2f3355;}
+.chat-send:disabled{opacity:.5;cursor:not-allowed;}
+.chat-notice{max-width:900px;margin:0 auto;font-size:11px;color:var(--text-3);text-align:center;margin-top:6px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">Eridion<span class="topbar-brand-tag">Francisco</span></div>
+  <div class="topbar-right">
+    <a href="./index.html">← Morning Brief</a>
+  </div>
+</div>
+
+<nav class="cc-nav">
+  <a class="cc-nav-link" href="./index.html">Morning Brief</a>
+  <a class="cc-nav-link" href="./processes.html">Process Library</a>
+  <a class="cc-nav-link" href="./winback.html">Win-back Scanner</a>
+  <a class="cc-nav-link" href="./drafts.html">Draft Engine</a>
+  <a class="cc-nav-link active" href="./francisco.html">💬 Francisco</a>
+</nav>
+
+<div class="chat-container">
+  <aside class="chat-sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">Conversations</div>
+      <button class="new-chat-btn" onclick="newConversation()">+ New</button>
+    </div>
+    <div class="convo-list" id="convo-list">
+      <div class="convo-empty">Loading…</div>
+    </div>
+  </aside>
+
+  <main class="chat-main">
+    <div class="chat-header">
+      <div class="chat-header-title"><div class="chat-header-dot"></div>Francisco</div>
+      <div class="chat-header-sub" id="chat-header-sub">Your Eridion Glass business assistant · Claude Sonnet 4</div>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="welcome">
+        <h2>Morning, Erika.</h2>
+        <p>I'm Francisco. Ask me anything about running Eridion Glass — orders, builders, cash flow, pricing, processes. Anything you'd normally think through out loud, bounce off me instead.</p>
+        <p style="font-size:12px;opacity:.8;margin-top:14px;"><strong>Phase 1 caveat:</strong> I can chat about your business in depth, but I can't pull live data from Monday, Xero, or Outlook yet. That's Phase 2. For now I'm best for thinking, drafting, and advising.</p>
+        <div class="welcome-prompts">
+          <div class="welcome-prompt" onclick="sendPrompt(this.textContent)">Help me think through margin audit on production builders</div>
+          <div class="welcome-prompt" onclick="sendPrompt(this.textContent)">Draft a polite nudge to DR Horton about the PayMode detail attachments</div>
+          <div class="welcome-prompt" onclick="sendPrompt(this.textContent)">What questions should I be asking Tara this month?</div>
+          <div class="welcome-prompt" onclick="sendPrompt(this.textContent)">Talk through Dallas DR Horton expansion approach</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input-wrap">
+      <div class="chat-input-inner">
+        <textarea class="chat-input" id="chat-input" placeholder="Ask Francisco anything..." rows="1" onkeydown="handleKey(event)" oninput="autosize(this)"></textarea>
+        <button class="chat-send" id="send-btn" onclick="sendMessage()">Send</button>
+      </div>
+      <div class="chat-notice">Francisco remembers this conversation. New conversations start fresh.</div>
+    </div>
+  </main>
+</div>
+
+<script>
+const WORKER_URL = 'https://frosty-base-f01e.erikagonzalez103.workers.dev';
+let currentConvoId = null;
+
+// ── init ─────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadConversations();
+});
+
+function autosize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+function handleKey(ev) {
+  if (ev.key === 'Enter' && !ev.shiftKey) {
+    ev.preventDefault();
+    sendMessage();
+  }
+}
+
+function sendPrompt(text) {
+  const input = document.getElementById('chat-input');
+  input.value = text;
+  sendMessage();
+}
+
+// ── conversation list ─────────────────────────────────────────────────
+async function loadConversations() {
+  try {
+    const res = await fetch(`${WORKER_URL}/francisco/list-conversations`);
+    const data = await res.json();
+    const list = document.getElementById('convo-list');
+    if (!data.conversations || data.conversations.length === 0) {
+      list.innerHTML = '<div class="convo-empty">No conversations yet. Start one!</div>';
+      return;
+    }
+    list.innerHTML = data.conversations.map(c => `
+      <div class="convo-item ${c.id === currentConvoId ? 'active' : ''}" onclick="loadConversation('${c.id}')">
+        <div class="convo-title">${escapeHtml(c.title || 'Untitled')}</div>
+        <div class="convo-preview">${escapeHtml(c.preview || '')}</div>
+      </div>
+    `).join('');
+  } catch(err) {
+    document.getElementById('convo-list').innerHTML = '<div class="convo-empty">Could not load conversations.</div>';
+    console.error(err);
+  }
+}
+
+async function loadConversation(id) {
+  currentConvoId = id;
+  try {
+    const res = await fetch(`${WORKER_URL}/francisco/conversation?id=${encodeURIComponent(id)}`);
+    const data = await res.json();
+    renderMessages(data.messages || []);
+    loadConversations();
+  } catch(err) { console.error(err); }
+}
+
+function newConversation() {
+  currentConvoId = null;
+  renderMessages([]);
+  loadConversations();
+  document.getElementById('chat-input').focus();
+}
+
+// ── messages ──────────────────────────────────────────────────────────
+function renderMessages(msgs) {
+  const box = document.getElementById('messages');
+  if (!msgs.length) {
+    box.innerHTML = `<div class="welcome">
+      <h2>Morning, Erika.</h2>
+      <p>What do you want to think through?</p>
+    </div>`;
+    return;
+  }
+  box.innerHTML = msgs.map(m => renderMsg(m)).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function renderMsg(m) {
+  const cls = m.role === 'user' ? 'msg-user' : 'msg-assistant';
+  const content = m.role === 'assistant' ? formatMarkdown(m.content) : escapeHtml(m.content);
+  return `<div class="msg ${cls}">${content}</div>`;
+}
+
+function formatMarkdown(text) {
+  // Lightweight markdown: **bold**, *italic*, `code`, lists, paragraphs
+  text = escapeHtml(text);
+  // Code blocks
+  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code}</code></pre>`);
+  // Inline code
+  text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  // Bold
+  text = text.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  text = text.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+  // Convert double newlines to paragraph breaks
+  const paras = text.split(/\n\n+/).map(p => {
+    if (p.startsWith('<pre>')) return p;
+    // Detect list items
+    if (/^\s*[-*]\s/.test(p) || /^\s*\d+\.\s/.test(p)) {
+      const ordered = /^\s*\d+\.\s/.test(p);
+      const items = p.split('\n').filter(l => l.trim()).map(l => `<li>${l.replace(/^\s*(?:[-*]|\d+\.)\s/, '')}</li>`).join('');
+      return ordered ? `<ol>${items}</ol>` : `<ul>${items}</ul>`;
+    }
+    return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+  });
+  return paras.join('');
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  const sendBtn = document.getElementById('send-btn');
+
+  // Clear welcome UI if present
+  const box = document.getElementById('messages');
+  if (box.querySelector('.welcome')) box.innerHTML = '';
+
+  // Optimistic render
+  appendMsg({ role: 'user', content: text });
+  input.value = '';
+  input.style.height = 'auto';
+  sendBtn.disabled = true;
+
+  // Typing indicator
+  const typingId = 'typing-' + Date.now();
+  box.insertAdjacentHTML('beforeend', `<div class="msg msg-assistant msg-typing" id="${typingId}"><span class="typing-dots"><span></span><span></span><span></span></span></div>`);
+  box.scrollTop = box.scrollHeight;
+
+  try {
+    const res = await fetch(`${WORKER_URL}/francisco/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: currentConvoId, message: text })
+    });
+    const data = await res.json();
+
+    document.getElementById(typingId)?.remove();
+
+    if (data.error) {
+      appendMsg({ role: 'assistant', content: '⚠ Error: ' + data.error });
+    } else {
+      currentConvoId = data.conversationId;
+      appendMsg({ role: 'assistant', content: data.reply });
+      loadConversations();
+    }
+  } catch(err) {
+    document.getElementById(typingId)?.remove();
+    appendMsg({ role: 'assistant', content: '⚠ Could not reach Francisco. Try again in a moment.' });
+    console.error(err);
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+function appendMsg(m) {
+  const box = document.getElementById('messages');
+  box.insertAdjacentHTML('beforeend', renderMsg(m));
+  box.scrollTop = box.scrollHeight;
+}
+</script>
+
+</body>
+</html>
