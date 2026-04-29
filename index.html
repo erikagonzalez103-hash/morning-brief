@@ -741,12 +741,39 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     <span class="app-tile-icon">📣</span><span class="app-tile-label">Campaign Studio</span>
   </a>
   <span class="app-tile-divider"></span>
+  <button class="app-tile secondary" onclick="openSendToDionPopover(event)" title="Send daily or weekly wrap to Dion now" style="border:none;font:inherit;cursor:pointer;background:transparent;text-align:center;">
+    <span class="app-tile-icon">📨</span><span class="app-tile-label">Send to Dion</span>
+  </button>
   <a class="app-tile secondary" href="#" onclick="alert('Valuation Calculator not yet deployed — open local HTML for now.');return false;" title="Valuation Calculator (coming soon)">
     <span class="app-tile-icon">📊</span><span class="app-tile-label">Valuation</span>
   </a>
   <a class="app-tile secondary" href="https://erikagonzalez103-hash.github.io/eridion-snapshot/" target="_blank" title="Weekly business snapshot">
     <span class="app-tile-icon">📋</span><span class="app-tile-label">Snapshot</span>
   </a>
+</div>
+
+<!-- Send-to-Dion popover -->
+<div id="dion-popover-backdrop" onclick="closeSendToDionPopover()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9000;"></div>
+<div id="dion-popover" style="display:none;position:fixed;z-index:9001;background:white;border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);width:380px;max-width:92vw;font-family:inherit;">
+  <div style="background:var(--navy-deep);color:var(--cream);padding:14px 16px;border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-family:'DM Serif Display',serif;font-size:16px;">Send wrap to Dion</div>
+    <button onclick="closeSendToDionPopover()" style="background:none;border:none;color:rgba(255,255,255,.6);font-size:18px;cursor:pointer;line-height:1;">✕</button>
+  </div>
+  <div style="padding:16px;">
+    <div style="font-size:12px;color:var(--text-2);line-height:1.5;margin-bottom:14px;">Sends to <strong>dion@eridionglass.com</strong> via Francisco. Includes the bidirectional Jericho⇄Francisco integration code reference.</div>
+
+    <button id="send-daily-btn" onclick="triggerDionSend('daily')" style="width:100%;padding:12px 14px;background:var(--navy);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;text-align:left;">
+      <div style="font-size:14px;margin-bottom:2px;">📨 Daily wrap — send now</div>
+      <div style="font-size:11px;opacity:.75;font-weight:500;">Today across all four projects · auto-sends 8pm CT Mon-Fri</div>
+    </button>
+
+    <button id="send-weekly-btn" onclick="triggerDionSend('weekly')" style="width:100%;padding:12px 14px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-align:left;">
+      <div style="font-size:14px;margin-bottom:2px;">📊 Weekly Eridion sync — send now</div>
+      <div style="font-size:11px;opacity:.75;font-weight:500;">Eridion only · auto-sends Friday 5pm CT</div>
+    </button>
+
+    <div id="dion-send-result" style="display:none;margin-top:12px;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.4;"></div>
+  </div>
 </div>
 
 <div class="conn-bar">
@@ -4906,6 +4933,94 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initSidebarMic);
 } else {
   initSidebarMic();
+}
+
+/* ═══════════════════════════════════════════════════════
+   SEND TO DION — manual trigger for daily / weekly wraps
+   ═══════════════════════════════════════════════════════ */
+function openSendToDionPopover(e) {
+  e?.stopPropagation();
+  const backdrop = document.getElementById('dion-popover-backdrop');
+  const pop = document.getElementById('dion-popover');
+  if (!pop) return;
+  // Reset result panel
+  const result = document.getElementById('dion-send-result');
+  if (result) { result.style.display = 'none'; result.textContent = ''; }
+  // Position popover near the click, but keep it on screen
+  if (e && e.target) {
+    const rect = e.target.getBoundingClientRect();
+    pop.style.top = Math.min(rect.bottom + 8, window.innerHeight - 280) + 'px';
+    pop.style.left = Math.max(12, Math.min(rect.left - 100, window.innerWidth - 392)) + 'px';
+  } else {
+    pop.style.top = '90px';
+    pop.style.left = '50%';
+    pop.style.transform = 'translateX(-50%)';
+  }
+  backdrop.style.display = 'block';
+  pop.style.display = 'block';
+}
+
+function closeSendToDionPopover() {
+  const backdrop = document.getElementById('dion-popover-backdrop');
+  const pop = document.getElementById('dion-popover');
+  if (backdrop) backdrop.style.display = 'none';
+  if (pop) pop.style.display = 'none';
+}
+
+async function triggerDionSend(kind) {
+  const btnDaily = document.getElementById('send-daily-btn');
+  const btnWeekly = document.getElementById('send-weekly-btn');
+  const result = document.getElementById('dion-send-result');
+  if (!result) return;
+
+  const targetBtn = kind === 'daily' ? btnDaily : btnWeekly;
+  const otherBtn = kind === 'daily' ? btnWeekly : btnDaily;
+  const originalHtml = targetBtn?.innerHTML;
+  if (targetBtn) {
+    targetBtn.disabled = true;
+    targetBtn.style.opacity = '.7';
+    targetBtn.innerHTML = `<div style="font-size:14px;margin-bottom:2px;">⏳ Sending…</div><div style="font-size:11px;opacity:.75;font-weight:500;">Francisco is composing the email</div>`;
+  }
+  if (otherBtn) { otherBtn.disabled = true; otherBtn.style.opacity = '.5'; }
+  result.style.display = 'block';
+  result.style.background = 'var(--cream)';
+  result.style.color = 'var(--text-2)';
+  result.style.border = '1px solid var(--border)';
+  result.textContent = 'Calling Francisco…';
+
+  const endpoint = kind === 'daily'
+    ? '/francisco/nightly-brief'
+    : '/francisco/weekly-eridion-sync';
+
+  try {
+    const resp = await fetch(WORKER_URL + endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await resp.json();
+    if (resp.ok && data.action === 'generated') {
+      result.style.background = '#EAF5EE';
+      result.style.color = 'var(--green)';
+      result.style.border = '1px solid var(--green-light)';
+      const wordCount = data.narrative ? data.narrative.split(/\s+/).length : 0;
+      result.innerHTML = `<strong>✓ Sent to dion@eridionglass.com</strong><br>${wordCount} words · email status: ${data.emailSent ? 'delivered' : 'queued'}`;
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch (err) {
+    result.style.background = 'var(--red-soft)';
+    result.style.color = 'var(--red)';
+    result.style.border = '1px solid var(--red)';
+    result.innerHTML = `<strong>✗ Failed:</strong> ${err.message || 'network error'}<br><span style="font-size:11px;opacity:.85;">Most likely cause: MS Graph token isn't set on the Worker yet (the same blocker as Francisco email integration).</span>`;
+  } finally {
+    if (targetBtn) {
+      targetBtn.disabled = false;
+      targetBtn.style.opacity = '';
+      targetBtn.innerHTML = originalHtml;
+    }
+    if (otherBtn) { otherBtn.disabled = false; otherBtn.style.opacity = ''; }
+  }
 }
 
 // Keyboard shortcut: Ctrl+T to toggle sidebar
