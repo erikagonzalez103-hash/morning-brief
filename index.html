@@ -3026,8 +3026,17 @@ function extractTaskTypeFromSubject(subj) {
 }
 
 function extractAddressFromBody(text) {
-  const m = String(text || '').match(/address:\s*([^\n\r,]+)/i);
-  return m ? m[1].trim() : '';
+  const t = String(text || '');
+  // Hyphen/BuildPro Order Complete bodies have the address in two places.
+  // Prefer the "Job: <num> - <address>" line (earlier in body, never truncated)
+  // over the "Address:" line (later in body, often cut off by preview truncation).
+  // Pattern: "Job: 002612318 - 1011 Hackberry Drive\nTask:" — capture between
+  // the dash and the next newline / "Task:" / comma.
+  const jobLine = t.match(/job:\s*\d+\s*-\s*([^\n\r]+?)(?=\s*(?:task:|address:|$|\r|\n))/i);
+  if (jobLine && jobLine[1]) return jobLine[1].trim();
+  // Fallback: the explicit "Address:" line
+  const addrLine = t.match(/address:\s*([^\n\r,]+)/i);
+  return addrLine ? addrLine[1].trim() : '';
 }
 
 function extractTaskTypeFromBody(text) {
@@ -3130,6 +3139,8 @@ async function handleBuilderComplete(doc, btn) {
     const mondayData = await mondayRes.json();
 
     if (mondayData.action === 'status_updated') {
+      const upCount = mondayData.updatedCount || 0;
+      const countSuffix = upCount > 1 ? ` (${upCount} items)` : '';
       btn.textContent = 'Filing email...';
       const fileRes = await fetch(`${WORKER_URL}/email/smart-file`, {
         method: 'POST',
@@ -3138,11 +3149,11 @@ async function handleBuilderComplete(doc, btn) {
       });
       const fileData = await fileRes.json();
       if (fileData.action === 'filed') {
-        btn.textContent = `✓ ${mondayStatus} + Filed`;
+        btn.textContent = `✓ ${mondayStatus}${countSuffix} + Filed`;
         btn.style.background = 'var(--green)';
         btn.style.borderColor = 'var(--green)';
       } else {
-        btn.textContent = `✓ ${mondayStatus} (filing needs review)`;
+        btn.textContent = `✓ ${mondayStatus}${countSuffix} (filing needs review)`;
         btn.style.background = 'var(--amber)';
         btn.style.borderColor = 'var(--amber)';
         btn.style.color = 'white';
@@ -3175,9 +3186,10 @@ function promptTaskCompletion() {
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:6px">Task Complete</div>
         <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:16px">What was completed?</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <button data-status="Measured"  style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">📐 Measured</button>
-          <button data-status="Installed" style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">🔧 Installed</button>
-          <button data-status="Delivered" style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">📦 Delivered</button>
+          <button data-status="Measured"    style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">📐 Measured</button>
+          <button data-status="Installed"   style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">🔧 Installed</button>
+          <button data-status="Delivered"   style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">📦 Delivered</button>
+          <button data-status="Invoice Sent" style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">🧾 Invoice Sent</button>
         </div>
         <div style="display:flex;justify-content:flex-end;margin-top:16px">
           <button data-status="" style="padding:6px 14px;border-radius:5px;border:none;background:transparent;color:var(--text-3);cursor:pointer;font-size:12px">Cancel</button>
