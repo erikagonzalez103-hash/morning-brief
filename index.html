@@ -2873,21 +2873,325 @@ function renderSubs(invoices){
 function renderBuilders(docs){
   const el=document.getElementById('builders-list');
   if(!docs.length){el.innerHTML='<div class="empty">No builder POs or notifications today.</div>';return;}
-  el.innerHTML=docs.map(doc=>{
+
+  // Stash docs so handlers can look up by index (no inline-onclick string escaping issues)
+  window._builderDocsCache = docs.slice();
+
+  el.innerHTML=docs.map((doc, idx)=>{
     const vd=doc.vendorDoc||{};
     const fe=(doc.fromEmail||'').toLowerCase();
-    let builder='',badge='';
-    if(fe.includes('buildertrend')){builder='Hines Homes';badge='<span class="builder-badge bb-approve">Approve / Decline required</span>';}
-    else if(fe.includes('hyphensolutions')){builder='Grand Homes';badge='<span class="builder-badge bb-trigger">Job trigger — create Monday item</span>';}
-    else if(fe.includes('drhorton')){builder='D.R. Horton';badge='<span class="builder-badge bb-notify">Confirm in portal</span>';}
-    else if(vd.type==='ERIDION_PO'){builder=`PO ${esc(vd.poNumber)} — sent by ${esc(vd.sentBy||'Dion')}`;badge='<span class="builder-badge bb-confirm">Confirm in order tracker</span>';}
-    else{builder=esc(doc.from);badge='<span class="builder-badge bb-trigger">Review PO</span>';}
-    return `<div class="builder-item">
+    let builder='';
+
+    if(fe.includes('buildertrend')) builder='Hines Homes';
+    else if(fe.includes('hyphensolutions')) builder='Grand Homes';
+    else if(fe.includes('drhorton')) builder='D.R. Horton';
+    else if(vd.type==='ERIDION_PO') builder=`PO ${esc(vd.poNumber)} — sent by ${esc(vd.sentBy||'Dion')}`;
+    else builder=esc(doc.from);
+
+    // Classify the email — type, action, button HTML
+    const cls = classifyBuilderEmail(doc, docs);
+    let badge = '', actionBtn = '';
+
+    if (cls.kind === 'reschedule') {
+      badge = '<span class="builder-badge bb-notify" style="background:#FFF8E7;color:#A87A2C">📅 Reschedule notice — file to job folder</span>';
+      actionBtn = `<button class="builder-action-btn" data-builder-idx="${idx}" data-builder-action="file" style="padding:5px 11px;border-radius:5px;border:1px solid var(--navy);background:white;color:var(--navy);cursor:pointer;font-size:11px;font-weight:600;margin-left:8px">📂 File to job folder</button>`;
+    } else if (cls.kind === 'complete') {
+      const taskLabel = cls.taskType ? cls.taskType : 'task';
+      const statusLabel = cls.mondayStatus || 'Complete';
+      badge = `<span class="builder-badge bb-trigger" style="background:#EAF5EE;color:#2A6F4A">✓ ${esc(taskLabel)} complete${cls.address ? ' — ' + esc(cls.address) : ''}</span>`;
+      actionBtn = `<button class="builder-action-btn" data-builder-idx="${idx}" data-builder-action="complete" style="padding:5px 11px;border-radius:5px;border:1px solid var(--green);background:var(--green);color:white;cursor:pointer;font-size:11px;font-weight:600;margin-left:8px">✓ Mark ${esc(statusLabel)} + File</button>`;
+    } else if (fe.includes('hyphensolutions')) {
+      badge='<span class="builder-badge bb-trigger">Job trigger — create Monday item</span>';
+    } else if (fe.includes('buildertrend')) {
+      badge='<span class="builder-badge bb-approve">Approve / Decline required</span>';
+    } else if (fe.includes('drhorton')) {
+      badge='<span class="builder-badge bb-notify">Confirm in portal</span>';
+    } else if (vd.type==='ERIDION_PO') {
+      badge='<span class="builder-badge bb-confirm">Confirm in order tracker</span>';
+    } else {
+      badge='<span class="builder-badge bb-trigger">Review PO</span>';
+    }
+
+    return `<div class="builder-item" data-builder-idx="${idx}">
       <div class="builder-header"><div class="builder-name">${builder}</div></div>
       <div class="builder-subject">${esc(doc.subject)}</div>
-      <div class="builder-meta">${badge}<span class="builder-time">${esc(doc.time)}</span></div>
+      <div class="builder-meta" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+        ${badge}
+        <span class="builder-time" style="margin-left:auto">${esc(doc.time)}</span>
+        ${actionBtn}
+      </div>
     </div>`;
   }).join('');
+
+  // Attach click handlers programmatically
+  el.querySelectorAll('.builder-action-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(e.currentTarget.dataset.builderIdx, 10);
+      const action = e.currentTarget.dataset.builderAction;
+      const doc = (window._builderDocsCache || [])[idx];
+      if (!doc) { console.warn('No builder doc at idx', idx); return; }
+      if (action === 'file') {
+        handleBuilderReschedule(doc, e.currentTarget);
+      } else if (action === 'complete') {
+        handleBuilderComplete(doc, e.currentTarget);
+      }
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   BUILDPRO EMAIL CLASSIFICATION
+   Three subtypes from Hyphen Solutions / BuildPro emails:
+   - new        : initial PO (existing behavior — Monday item auto-create)
+   - reschedule : "Reschedule Notice" subject — file to job folder, no Monday change
+   - complete   : "Order Complete" / "Task Complete" — surface Monday status update
+   ═══════════════════════════════════════════════════════ */
+function classifyBuilderEmail(doc, allDocs) {
+  const subj = doc.subject || '';
+  const lowerSubj = subj.toLowerCase();
+  const preview = (doc.preview || '');
+  const fe = (doc.fromEmail || '').toLowerCase();
+
+  // Only classify Hyphen/BuildPro emails this way for now (Grand Homes territory).
+  // Buildertrend (Hines) + DR Horton stay on the legacy badges.
+  if (!fe.includes('hyphensolutions') && !lowerSubj.includes('buildpro')) {
+    return { kind: 'other' };
+  }
+
+  const orderNum = extractOrderNum(subj);
+
+  // Reschedule
+  if (lowerSubj.includes('reschedule')) {
+    return {
+      kind: 'reschedule',
+      address: extractAddressFromSubject(subj),
+      taskType: extractTaskTypeFromSubject(subj),
+      orderNum
+    };
+  }
+
+  // Completion — subject doesn't include task or address; we have to recover them
+  // from the preview body OR cross-match the order number against the other
+  // builder emails in this brief (initial PO and Reschedule Notice both contain
+  // address + task in their subject).
+  if (lowerSubj.includes('order complete') || lowerSubj.includes('task complete')) {
+    let address = extractAddressFromBody(preview);
+    let taskType = extractTaskTypeFromBody(preview);
+
+    if ((!address || !taskType) && orderNum && allDocs) {
+      const sibling = allDocs.find(d => {
+        if (d === doc) return false;
+        const s = d.subject || '';
+        return s.includes(orderNum) && !s.toLowerCase().includes('order complete');
+      });
+      if (sibling) {
+        if (!address) address = extractAddressFromSubject(sibling.subject || '');
+        if (!taskType) taskType = extractTaskTypeFromSubject(sibling.subject || '');
+      }
+    }
+
+    return {
+      kind: 'complete',
+      address,
+      taskType,
+      orderNum,
+      mondayStatus: taskTypeToMondayStatus(taskType)
+    };
+  }
+
+  // Default: new PO trigger (existing behavior)
+  return { kind: 'new', orderNum };
+}
+
+function extractOrderNum(subj) {
+  const m = String(subj || '').match(/#(\d{6,}-?\d*)/);
+  return m ? m[1] : '';
+}
+
+function extractAddressFromSubject(subj) {
+  // Pattern: "[Subdivision], [JobNum] - [Address], [Task]..."
+  // e.g. "Walton Ridge 40s, 00232409 - 1532 Euclid Alley, Measure Mirrors..."
+  const m = String(subj || '').match(/\d{6,}\s*-\s*([^,]+?),/);
+  return m ? m[1].trim() : '';
+}
+
+function extractTaskTypeFromSubject(subj) {
+  const lower = String(subj || '').toLowerCase();
+  if (lower.includes('measure')) return 'Measure';
+  if (lower.includes('install')) return 'Install';
+  if (lower.includes('deliver')) return 'Deliver';
+  return null;
+}
+
+function extractAddressFromBody(text) {
+  const m = String(text || '').match(/address:\s*([^\n\r,]+)/i);
+  return m ? m[1].trim() : '';
+}
+
+function extractTaskTypeFromBody(text) {
+  const m = String(text || '').match(/task:\s*(measure|install|deliver)/i);
+  if (!m) return null;
+  return m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+}
+
+function taskTypeToMondayStatus(taskType) {
+  if (!taskType) return null;
+  const t = taskType.toLowerCase();
+  if (t.includes('measure')) return 'Measured';
+  if (t.includes('install')) return 'Installed';
+  if (t.includes('deliver')) return 'Delivered';
+  return null;
+}
+
+/* ═══════════════════════════════════════════════════════
+   BUILDPRO ACTION HANDLERS
+   ═══════════════════════════════════════════════════════ */
+
+// Reschedule notice → just file the email. No Monday change.
+async function handleBuilderReschedule(doc, btn) {
+  const emailId = doc.id;
+  if (!emailId) {
+    btn.textContent = '⚠ No email ID';
+    return;
+  }
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '📂 Filing...';
+  try {
+    const res = await fetch(`${WORKER_URL}/email/smart-file`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailId })
+    });
+    const data = await res.json();
+    if (data.action === 'filed') {
+      btn.textContent = '✓ Filed';
+      btn.style.background = 'var(--green)';
+      btn.style.borderColor = 'var(--green)';
+      btn.style.color = 'white';
+      // Fade row + remove
+      const row = btn.closest('.builder-item');
+      if (row) {
+        row.style.transition = 'opacity .25s';
+        setTimeout(() => { row.style.opacity = '0.3'; }, 150);
+      }
+    } else if (data.action === 'low_confidence_suggestion' || data.action === 'needs_folder_choice') {
+      // Fallback to existing folder picker / prompt flow
+      btn.textContent = orig;
+      btn.disabled = false;
+      if (typeof openFolderPicker === 'function') {
+        openFolderPicker(emailId, null, btn);
+      }
+    } else {
+      btn.textContent = '⚠ ' + (data.error || 'Filing failed');
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+    }
+  } catch(e) {
+    console.error('Reschedule file error:', e);
+    btn.textContent = '⚠ Error';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  }
+}
+
+// Order Complete → update Monday status + file email.
+// If task type unknown, prompt for it first.
+async function handleBuilderComplete(doc, btn) {
+  const cls = classifyBuilderEmail(doc, window._builderDocsCache || []);
+  let mondayStatus = cls.mondayStatus;
+  let address = cls.address;
+  const orderNum = cls.orderNum;
+  const builder = (doc.fromEmail || '').toLowerCase().includes('hyphensolutions') ? 'Grand Homes' : (doc.from || 'Grand Homes');
+
+  // No status detected — prompt for it
+  if (!mondayStatus) {
+    const choice = await promptTaskCompletion();
+    if (!choice) return; // cancelled
+    mondayStatus = choice;
+  }
+
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Updating Monday...';
+
+  try {
+    const mondayRes = await fetch(`${WORKER_URL}/monday`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'STATUS_UPDATE',
+        status: mondayStatus,        // "Measured" / "Installed" / "Delivered"
+        address: address || null,
+        builder,
+        orderNum: orderNum || null   // worker can find by order # if address missing
+      })
+    });
+    const mondayData = await mondayRes.json();
+
+    if (mondayData.action === 'status_updated') {
+      btn.textContent = 'Filing email...';
+      const fileRes = await fetch(`${WORKER_URL}/email/smart-file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailId: doc.id })
+      });
+      const fileData = await fileRes.json();
+      if (fileData.action === 'filed') {
+        btn.textContent = `✓ ${mondayStatus} + Filed`;
+        btn.style.background = 'var(--green)';
+        btn.style.borderColor = 'var(--green)';
+      } else {
+        btn.textContent = `✓ ${mondayStatus} (filing needs review)`;
+        btn.style.background = 'var(--amber)';
+        btn.style.borderColor = 'var(--amber)';
+        btn.style.color = 'white';
+      }
+      const row = btn.closest('.builder-item');
+      if (row) {
+        row.style.transition = 'opacity .25s';
+        setTimeout(() => { row.style.opacity = '0.3'; }, 150);
+      }
+    } else {
+      btn.textContent = '⚠ Job not found in Monday';
+      btn.style.color = 'var(--amber)';
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; btn.style.color = ''; }, 4000);
+    }
+  } catch(e) {
+    console.error('Builder complete error:', e);
+    btn.textContent = '⚠ Error';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+  }
+}
+
+// Modal picker for completion type when we couldn't auto-detect
+function promptTaskCompletion() {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;display:flex;align-items:center;justify-content:center;padding:1rem';
+    overlay.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:24px;max-width:380px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.2)">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:6px">Task Complete</div>
+        <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:16px">What was completed?</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button data-status="Measured"  style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">📐 Measured</button>
+          <button data-status="Installed" style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">🔧 Installed</button>
+          <button data-status="Delivered" style="padding:10px 14px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;text-align:left">📦 Delivered</button>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:16px">
+          <button data-status="" style="padding:6px 14px;border-radius:5px;border:none;background:transparent;color:var(--text-3);cursor:pointer;font-size:12px">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelectorAll('button[data-status]').forEach(b => {
+      b.addEventListener('click', () => {
+        const v = b.dataset.status;
+        overlay.remove();
+        resolve(v || null);
+      });
+    });
+  });
 }
 
 function renderInbox(items){
