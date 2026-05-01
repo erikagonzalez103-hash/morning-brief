@@ -3088,16 +3088,27 @@ async function loadFranciscoActivity() {
     const panel = document.getElementById('francisco-activity-panel');
     if (!panel) return;
 
-    // Locally-dismissed action-log items (action-log is informational and not server-mutated;
-    // we dismiss via localStorage so green entries Erika has acknowledged stay gone)
+    // Locally-dismissed action-log items. Action-log is informational and not
+    // server-mutated; we dismiss via localStorage so green entries Erika has
+    // acknowledged stay gone. We track by stable fingerprint (not just id) so
+    // entries lacking ids still work.
     const dismissedIds = JSON.parse(localStorage.getItem('eridion:francisco:dismissed') || '{}');
+
+    // Build a stable key for any entry — falls back to fingerprint when id is missing.
+    const keyFor = (a) => {
+      if (a && a.id) return String(a.id);
+      const sender = (a && (a.fromName || a.from)) || '';
+      const q = (a && a.question) || '';
+      const ts = (a && a.timestamp) || '';
+      return 'fp:' + sender + '|' + q + '|' + ts;
+    };
 
     const pendingList = (pending.pending || []).slice(0, 10);
     const recentActions = (actions.actions || [])
       .filter(a => {
         // Drop items already acknowledged
-        if (a.id && dismissedIds[a.id]) return false;
-        // Drop items with no sender AND no question — these render as bare ":" and add no signal
+        if (dismissedIds[keyFor(a)]) return false;
+        // Drop items with no sender AND no question — bare ":" rows have no signal
         const hasSender = (a.fromName || a.from || '').trim();
         const hasContent = (a.question || '').trim();
         return hasSender || hasContent;
@@ -3109,6 +3120,10 @@ async function loadFranciscoActivity() {
       return;
     }
     panel.style.display = 'block';
+
+    // Stash entries on window so the click handler can look them up by index —
+    // this avoids any inline-onclick escaping issues with quotes/special chars in ids.
+    window._franciscoActionEntries = recentActions.slice();
 
     const pendingHtml = pendingList.length ? `
       <div style="margin-bottom:12px">
@@ -3128,21 +3143,33 @@ async function loadFranciscoActivity() {
     const actionsHtml = recentActions.length ? `
       <div>
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--green);margin-bottom:6px">✓ Francisco recently handled</div>
-        ${recentActions.map(a => `
-          <div id="action-log-${esc(a.id||'')}" style="padding:8px 12px;background:#EAF5EE;border-left:3px solid var(--green);border-radius:6px;margin-bottom:4px;font-size:12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        ${recentActions.map((a, i) => `
+          <div data-action-idx="${i}" style="padding:8px 12px;background:#EAF5EE;border-left:3px solid var(--green);border-radius:6px;margin-bottom:4px;font-size:12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
             <div style="flex:1;min-width:0">
               <div style="font-weight:500;color:var(--text)">${esc(a.fromName || a.from || '')}: ${esc(a.question || '')}</div>
               <div style="color:var(--text-3);font-size:11px;margin-top:2px">
                 ${a.confident ? '✅ Auto-replied with answer' : '📩 Replied — flagged for you'} · ${timeAgo(a.timestamp)}
               </div>
             </div>
-            <button onclick="dismissActionLogItem('${esc(a.id||'')}',this)" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(82,196,138,.4);background:white;cursor:pointer;font-size:11px;color:var(--text-3);flex-shrink:0;white-space:nowrap" title="Acknowledge — hide from this list">✓</button>
+            <button class="francisco-ack-btn" data-action-idx="${i}" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(82,196,138,.4);background:white;cursor:pointer;font-size:11px;color:var(--text-3);flex-shrink:0;white-space:nowrap" title="Acknowledge — hide from this list">✓</button>
           </div>
         `).join('')}
       </div>
     ` : '';
 
     panel.innerHTML = `<div class="francisco-panel-inner">${pendingHtml}${actionsHtml}</div>`;
+
+    // Attach click handlers programmatically — avoids inline-onclick string escaping issues
+    panel.querySelectorAll('.francisco-ack-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = parseInt(e.currentTarget.dataset.actionIdx, 10);
+        const entry = (window._franciscoActionEntries || [])[idx];
+        if (!entry) { console.warn('No action entry at idx', idx); return; }
+        dismissActionLogItem(keyFor(entry), e.currentTarget);
+      });
+    });
   } catch(err) {
     console.warn('Could not load Francisco activity:', err);
   }
@@ -3161,17 +3188,18 @@ function timeAgo(iso) {
 // Acknowledge a green action-log item — client-side dismiss via localStorage.
 // Action-log entries are informational (Francisco already replied), so we don't
 // need the server to know; we just hide them from this list locally.
-function dismissActionLogItem(id, btn) {
-  if (!id) return;
+function dismissActionLogItem(key, btn) {
+  if (!key) { console.warn('dismissActionLogItem: no key'); return; }
   try {
     const dismissed = JSON.parse(localStorage.getItem('eridion:francisco:dismissed') || '{}');
-    dismissed[id] = Date.now();
+    dismissed[key] = Date.now();
     // Garbage collect entries older than 30 days so localStorage doesn't grow forever
     const cutoff = Date.now() - 30*86400000;
     Object.keys(dismissed).forEach(k => { if (dismissed[k] < cutoff) delete dismissed[k]; });
     localStorage.setItem('eridion:francisco:dismissed', JSON.stringify(dismissed));
   } catch(e) { console.warn('dismiss persist failed:', e); }
-  const row = document.getElementById('action-log-' + id);
+  // Fade the parent row, then re-render
+  const row = btn && btn.closest('[data-action-idx]');
   if (row) {
     row.style.transition = 'opacity .15s';
     row.style.opacity = '0';
