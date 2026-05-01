@@ -594,8 +594,6 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
   <div id="francisco-activity-panel" style="display:none;margin:16px 0"></div>
   <div id="friday-banner" style="display:none"></div>
   <div class="stats">
-    <div class="stat good"><div class="stat-num" id="s-received-mtd" style="color:var(--green)">—</div><div class="stat-label" id="s-received-label">Received MTD</div></div>
-    <div class="stat urgent"><div class="stat-num" id="s-spent-mtd" style="color:var(--red)">—</div><div class="stat-label" id="s-spent-label">Spent MTD</div></div>
     <div class="stat urgent" onclick="scroll2('priority-section')"><div class="stat-num is-red" id="s-priority">—</div><div class="stat-label">Act today</div></div>
     <div class="stat warn" onclick="scroll2('stale-section')"><div class="stat-num is-amber" id="s-stale">—</div><div class="stat-label">Stale &gt;24h</div></div>
     <div class="stat sub" onclick="scroll2('subs-section')"><div class="stat-num is-purple" id="s-subs">—</div><div class="stat-label">Sub invoices</div></div>
@@ -1368,21 +1366,6 @@ function render(data){
 
   const builderDocs=vendorDocs.filter(d=>isBuilder(d));
   const vendorOnly=vendorDocs.filter(d=>!isBuilder(d));
-
-  // MTD cash flow — populate top-of-page tiles
-  const mtd = data.cashflowMTD || null;
-  if (mtd) {
-    const monthShort = (mtd.month || '').slice(0,3);
-    set('s-received-mtd', mtd.receivedMTD > 0 ? fmtMoney(mtd.receivedMTD) : '$0');
-    set('s-spent-mtd', mtd.spentMTD > 0 ? fmtMoney(mtd.spentMTD) : '$0');
-    if (monthShort) {
-      set('s-received-label', 'Received ' + monthShort);
-      set('s-spent-label', 'Spent ' + monthShort);
-    }
-  } else {
-    set('s-received-mtd', '—');
-    set('s-spent-mtd', '—');
-  }
 
   set('s-priority',priority.length);
   set('s-stale',stale.length);
@@ -3105,8 +3088,21 @@ async function loadFranciscoActivity() {
     const panel = document.getElementById('francisco-activity-panel');
     if (!panel) return;
 
+    // Locally-dismissed action-log items (action-log is informational and not server-mutated;
+    // we dismiss via localStorage so green entries Erika has acknowledged stay gone)
+    const dismissedIds = JSON.parse(localStorage.getItem('eridion:francisco:dismissed') || '{}');
+
     const pendingList = (pending.pending || []).slice(0, 10);
-    const recentActions = (actions.actions || []).slice(0, 5);
+    const recentActions = (actions.actions || [])
+      .filter(a => {
+        // Drop items already acknowledged
+        if (a.id && dismissedIds[a.id]) return false;
+        // Drop items with no sender AND no question — these render as bare ":" and add no signal
+        const hasSender = (a.fromName || a.from || '').trim();
+        const hasContent = (a.question || '').trim();
+        return hasSender || hasContent;
+      })
+      .slice(0, 5);
 
     if (!pendingList.length && !recentActions.length) {
       panel.style.display = 'none';
@@ -3133,11 +3129,14 @@ async function loadFranciscoActivity() {
       <div>
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--green);margin-bottom:6px">✓ Francisco recently handled</div>
         ${recentActions.map(a => `
-          <div style="padding:8px 12px;background:#EAF5EE;border-left:3px solid var(--green);border-radius:6px;margin-bottom:4px;font-size:12px">
-            <div style="font-weight:500;color:var(--text)">${esc(a.fromName || a.from || '')}: ${esc(a.question || '')}</div>
-            <div style="color:var(--text-3);font-size:11px;margin-top:2px">
-              ${a.confident ? '✅ Auto-replied with answer' : '📩 Replied — flagged for you'} · ${timeAgo(a.timestamp)}
+          <div id="action-log-${esc(a.id||'')}" style="padding:8px 12px;background:#EAF5EE;border-left:3px solid var(--green);border-radius:6px;margin-bottom:4px;font-size:12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:500;color:var(--text)">${esc(a.fromName || a.from || '')}: ${esc(a.question || '')}</div>
+              <div style="color:var(--text-3);font-size:11px;margin-top:2px">
+                ${a.confident ? '✅ Auto-replied with answer' : '📩 Replied — flagged for you'} · ${timeAgo(a.timestamp)}
+              </div>
             </div>
+            <button onclick="dismissActionLogItem('${esc(a.id||'')}',this)" style="padding:3px 9px;border-radius:4px;border:1px solid rgba(82,196,138,.4);background:white;cursor:pointer;font-size:11px;color:var(--text-3);flex-shrink:0;white-space:nowrap" title="Acknowledge — hide from this list">✓</button>
           </div>
         `).join('')}
       </div>
@@ -3157,6 +3156,29 @@ function timeAgo(iso) {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return hrs + 'h ago';
   return Math.floor(hrs / 24) + 'd ago';
+}
+
+// Acknowledge a green action-log item — client-side dismiss via localStorage.
+// Action-log entries are informational (Francisco already replied), so we don't
+// need the server to know; we just hide them from this list locally.
+function dismissActionLogItem(id, btn) {
+  if (!id) return;
+  try {
+    const dismissed = JSON.parse(localStorage.getItem('eridion:francisco:dismissed') || '{}');
+    dismissed[id] = Date.now();
+    // Garbage collect entries older than 30 days so localStorage doesn't grow forever
+    const cutoff = Date.now() - 30*86400000;
+    Object.keys(dismissed).forEach(k => { if (dismissed[k] < cutoff) delete dismissed[k]; });
+    localStorage.setItem('eridion:francisco:dismissed', JSON.stringify(dismissed));
+  } catch(e) { console.warn('dismiss persist failed:', e); }
+  const row = document.getElementById('action-log-' + id);
+  if (row) {
+    row.style.transition = 'opacity .15s';
+    row.style.opacity = '0';
+    setTimeout(loadFranciscoActivity, 160);
+  } else {
+    loadFranciscoActivity();
+  }
 }
 
 async function dismissPendingAction(id, btn) {
