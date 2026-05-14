@@ -1358,11 +1358,28 @@ function render(data){
   const snoozed = getSnoozedEmails();
   const notSnoozed = (item) => !snoozed[item.id];
 
-  const priority=(data.priority||[]).filter(notSnoozed);
-  const stale=(data.stale||[]).filter(notSnoozed);
-  const vendorDocs=data.vendorDocs||[];
-  const subInvoices=(data.subEmails||{}).invoices||[];
-  const inbox=(data.inbox||[]).filter(notSnoozed);
+  // Sort every email list NEWEST FIRST. The worker was returning items
+  // in classification/source order, which buried today's stuff under
+  // older items. See getItemTs() for the field-name fallback chain.
+  const priority=sortByRecency((data.priority||[]).filter(notSnoozed));
+  const stale=sortByRecency((data.stale||[]).filter(notSnoozed));
+  const vendorDocs=sortByRecency(data.vendorDocs||[]);
+  const subInvoices=sortByRecency((data.subEmails||{}).invoices||[]);
+  const inbox=sortByRecency((data.inbox||[]).filter(notSnoozed));
+
+  // One-time diagnostic: log fields on the first priority item so we
+  // can verify the worker is sending a real timestamp the sort can use.
+  if (priority[0] && !window._sortDebugLogged){
+    window._sortDebugLogged = true;
+    const p = priority[0];
+    console.log('🕓 Sort diagnostic — first priority item keys:', Object.keys(p));
+    console.log('🕓 Timestamp candidates:', {
+      receivedDateTime: p.receivedDateTime, receivedAt: p.receivedAt,
+      received: p.received, ts: p.ts, timestamp: p.timestamp,
+      iso: p.iso, date: p.date, time: p.time
+    });
+    console.log('🕓 Resolved ts:', getItemTs(p), '→', new Date(getItemTs(p)).toLocaleString());
+  }
 
   const builderDocs=vendorDocs.filter(d=>isBuilder(d));
   const vendorOnly=vendorDocs.filter(d=>!isBuilder(d));
@@ -1410,6 +1427,46 @@ function ageInDays(item){
   if (!d) return null;
   const ms = Date.now() - new Date(d).getTime();
   return Math.floor(ms / 86400000);
+}
+
+/* ═══════════════════════════════════════════════════════
+   RECENCY SORT — newest emails first across all lists
+   The worker may use different timestamp field names; try
+   the common candidates and fall back to parsing the display
+   `time` string as today's clock time.
+   ═══════════════════════════════════════════════════════ */
+function getItemTs(item){
+  if (!item) return 0;
+  const candidates = [
+    item.receivedDateTime, item.receivedAt, item.received,
+    item.sentDateTime, item.sentAt,
+    item.ts, item.timestamp, item.iso, item.dateISO,
+    item.dateReceived, item.date,
+  ];
+  for (const c of candidates){
+    if (!c) continue;
+    const t = new Date(c).getTime();
+    if (!isNaN(t)) return t;
+  }
+  // Fallback: parse "8:12 AM" / "14:05" against today
+  if (item.time){
+    const m = String(item.time).match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (m){
+      const d = new Date();
+      let h = parseInt(m[1],10);
+      const min = parseInt(m[2],10);
+      const ampm = (m[3]||'').toUpperCase();
+      if (ampm === 'PM' && h < 12) h += 12;
+      if (ampm === 'AM' && h === 12) h = 0;
+      d.setHours(h, min, 0, 0);
+      return d.getTime();
+    }
+  }
+  return 0; // unknown — sinks to the bottom on DESC sort
+}
+
+function sortByRecency(items){
+  return [...(items || [])].sort((a,b) => getItemTs(b) - getItemTs(a));
 }
 
 function fmtMoney(n){
