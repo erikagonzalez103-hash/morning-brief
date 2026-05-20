@@ -696,7 +696,7 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
      ═══════════════════════════════════════════════════════════════ -->
 <div id="mark-paid-modal-overlay" onclick="closeMarkPaidScheduledModal(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
   <div onclick="event.stopPropagation()" style="background:white;border-radius:12px;padding:24px;width:520px;max-width:92vw;box-shadow:0 8px 30px rgba(0,0,0,.25);">
-    <div style="font-size:16px;font-weight:700;color:#1F2A4A;margin-bottom:4px;">💰 Mark Invoice as Paid + Schedule</div>
+    <div style="font-size:16px;font-weight:700;color:#1F2A4A;margin-bottom:4px;">✉ Invoice Sent — Schedule Expected Payment</div>
     <div style="font-size:12px;color:#7C7C7C;margin-bottom:18px;" id="mp-subject-line">Invoice details…</div>
     <div style="background:#F5F5F5;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:#7C7C7C;">Invoice #</span><span id="mp-invoice-num" style="font-family:monospace;color:#1F2A4A;font-weight:600;">—</span></div>
@@ -719,7 +719,7 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     <div id="mp-status-line" style="font-size:11px;color:#7C7C7C;min-height:16px;margin-bottom:12px;font-family:monospace;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button onclick="closeMarkPaidScheduledModal(null,true)" style="padding:10px 18px;background:transparent;border:1px solid #D8D8D8;border-radius:6px;font-size:13px;cursor:pointer;color:#7C7C7C;">Cancel</button>
-      <button id="mp-confirm-btn" onclick="confirmMarkPaidScheduled()" style="padding:10px 18px;background:#2A5F3F;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Update Monday + Forecast</button>
+      <button id="mp-confirm-btn" onclick="confirmMarkInvoiceSentScheduled()" style="padding:10px 18px;background:#2A5F3F;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Mark Sent + Update Forecast</button>
     </div>
   </div>
 </div>
@@ -2824,10 +2824,11 @@ function buildActions(item){
       data-description="${esc(item.description||item.subject||'')}"
       data-emailid="${esc(item.id||'')}"
       data-builder="${esc(item.builder||'Grand Homes')}"
-      onclick="handleInvoiceSent(this,event)">Mark invoice sent in Monday + File</button>`);
+      onclick="handleInvoiceSent(this,event)">Mark sent only (no schedule) — File</button>`);
 
-  // ✦ New: schedule expected payment — updates Monday status to "Paid" + writes expected pay date
-  // into the Ledger's Forecast (so Cash Flow knows when receipts are coming)
+  // ✦ Primary invoice-sent flow: updates Monday status to "Invoice Sent" + files the email
+  // + writes expected pay date into the Ledger's Forecast (so Cash Flow knows when receipts are coming).
+  // Use this for nearly every sent invoice — the modal lets you skip pay date / method if unknown.
   if(isInvoiceSent)
     btns.push(`<button class="act-btn primary" style="background:#2A5F3F;border-color:#2A5F3F"
       data-emailid="${esc(item.id||'')}"
@@ -2836,7 +2837,7 @@ function buildActions(item){
       data-subject="${esc(item.subject||'')}"
       data-preview="${esc(item.preview||'')}"
       data-amount="${esc(String(item.amount||0))}"
-      onclick="openMarkPaidScheduledModal(this,event)">💰 Mark as Paid + Schedule</button>`);
+      onclick="openMarkInvoiceSentModal(this,event)">✉ Mark Invoice Sent + Schedule Payment</button>`);
 
   if(isACH)
     btns.push(`<button class="act-btn primary" 
@@ -4654,7 +4655,7 @@ let _markPaidContext = null;
 function extractInvoiceNumber(s) { const m=(s||'').match(/invoice\s*#?\s*(\d+)/i); return m ? m[1] : ''; }
 function extractPONumber(s) { const m=(s||'').match(/p\.?o\.?\s*#?\s*([A-Z0-9\-]+)/i); return m ? m[1] : ''; }
 
-function openMarkPaidScheduledModal(btn, event) {
+function openMarkInvoiceSentModal(btn, event) {
   if (event) event.stopPropagation();
   const subject = btn.getAttribute('data-subject') || '';
   const preview = btn.getAttribute('data-preview') || '';
@@ -4673,10 +4674,13 @@ function openMarkPaidScheduledModal(btn, event) {
   document.getElementById('mp-status-line').textContent = '';
   document.querySelectorAll('input[name="mp-method"]').forEach(r => { r.checked = r.value === 'Unknown'; });
   document.getElementById('mp-confirm-btn').disabled = false;
-  document.getElementById('mp-confirm-btn').textContent = 'Update Monday + Forecast';
-  document.getElementById('mp-confirm-btn').onclick = confirmMarkPaidScheduled;
+  document.getElementById('mp-confirm-btn').textContent = 'Mark Sent + Update Forecast';
+  document.getElementById('mp-confirm-btn').onclick = confirmMarkInvoiceSentScheduled;
   document.getElementById('mark-paid-modal-overlay').style.display = 'flex';
 }
+
+// Kept for backward compatibility — alias to the new opener
+function openMarkPaidScheduledModal(btn, event) { openMarkInvoiceSentModal(btn, event); }
 
 function closeMarkPaidScheduledModal(e, force) {
   if (force || (e && e.target === document.getElementById('mark-paid-modal-overlay'))) {
@@ -4685,7 +4689,7 @@ function closeMarkPaidScheduledModal(e, force) {
   }
 }
 
-async function confirmMarkPaidScheduled() {
+async function confirmMarkInvoiceSentScheduled() {
   if (!_markPaidContext) return;
   const ctx = _markPaidContext;
   const payDate = document.getElementById('mp-pay-date').value || null;
@@ -4694,45 +4698,72 @@ async function confirmMarkPaidScheduled() {
   const status = document.getElementById('mp-status-line');
   btn.disabled = true;
   btn.textContent = 'Updating…';
-  status.textContent = '→ Updating Monday.com...';
+  status.textContent = '→ Updating Monday status to Invoice Sent...';
   status.style.color = '#7C7C7C';
 
+  // ── 1. Tell Monday the invoice was sent ──
   let mondayOk = false;
   try {
     const mRes = await fetch(`${WORKER_URL}/monday`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type: 'PAYMENT_RECEIVED',
-        builder: ctx.builder || 'unknown',
+        type: 'INVOICE_SENT',
         address: ctx.description || '',
+        builder: ctx.builder || 'unknown',
         emailId: ctx.emailId || '',
         invoiceNum: ctx.invoiceNum || '',
         poNum: ctx.poNum || '',
+        // Optional metadata — Worker can store these as a note or ignore
         expectedPayDate: payDate,
         paymentMethod: method,
+        amount: ctx.amount || 0,
       })
     });
     const mData = await mRes.json();
-    mondayOk = mData.action === 'status_updated' || mData.action === 'payment_marked';
-    status.textContent = mondayOk ? '✓ Monday updated' : '⚠ Monday update failed (continuing to Forecast)';
+    mondayOk = mData.action === 'status_updated' || mData.action === 'invoice_sent' || mData.action === 'updated';
   } catch(err) {
-    status.textContent = '⚠ Monday error: ' + err.message + ' (continuing to Forecast)';
     console.error('Monday update failed:', err);
   }
 
-  const forecastResult = updateForecastFromInvoice(ctx, payDate, method);
-  if (forecastResult.matched) {
-    const verb = forecastResult.action === 'created' ? '✓ Forecast created (midmonth)' : '✓ Forecast updated';
-    status.textContent = (mondayOk ? '✓ Monday updated · ' : '⚠ Monday issue · ') + `${verb} (${forecastResult.builder} · ${forecastResult.address})`;
-    status.style.color = '#2A5F3F';
-  } else {
-    status.textContent = (mondayOk ? '✓ Monday updated · ' : '⚠ Monday issue · ') + '⚠ Forecast write failed: ' + (forecastResult.reason || 'unknown');
-    status.style.color = '#A06C2C';
+  // ── 2. File the email (preserves the behavior of the old "Mark invoice sent + File" button) ──
+  let fileOk = false;
+  if (ctx.emailId) {
+    try {
+      status.textContent = '→ Filing email...';
+      const fileRes = await fetch(`${WORKER_URL}/email/smart-file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailId: ctx.emailId })
+      });
+      const fileData = await fileRes.json();
+      fileOk = fileData.action === 'filed';
+    } catch(err) {
+      console.error('File failed:', err);
+    }
   }
 
+  // ── 3. Update or create Forecast in Ledger localStorage ──
+  const forecastResult = updateForecastFromInvoice(ctx, payDate, method);
+
+  // ── 4. Build the status line summary ──
+  const parts = [];
+  parts.push(mondayOk ? '✓ Monday: sent' : '⚠ Monday issue');
+  parts.push(fileOk ? '✓ Filed' : (ctx.emailId ? '⚠ File issue' : 'skip file'));
+  if (forecastResult.matched) {
+    parts.push(forecastResult.action === 'created'
+      ? `✓ Forecast created midmonth (${forecastResult.builder} · ${forecastResult.address})`
+      : `✓ Forecast updated (${forecastResult.builder} · ${forecastResult.address})`);
+    status.style.color = '#2A5F3F';
+  } else {
+    parts.push('⚠ Forecast: ' + (forecastResult.reason || 'unknown'));
+    status.style.color = '#A06C2C';
+  }
+  status.textContent = parts.join(' · ');
+
+  // ── 5. Visually mark the email card button as handled ──
   if (ctx.btn) {
-    ctx.btn.textContent = '✓ Scheduled';
+    ctx.btn.textContent = '✓ Sent + Scheduled';
     ctx.btn.style.background = 'var(--green)';
     ctx.btn.style.borderColor = 'var(--green)';
     ctx.btn.style.color = 'white';
@@ -4741,6 +4772,9 @@ async function confirmMarkPaidScheduled() {
   btn.textContent = (mondayOk || forecastResult.matched) ? '✓ Done — close' : '⚠ Issues — close';
   btn.onclick = function() { closeMarkPaidScheduledModal(null, true); };
 }
+
+// Alias kept for any existing call sites
+async function confirmMarkPaidScheduled() { return confirmMarkInvoiceSentScheduled(); }
 
 function updateForecastFromInvoice(ctx, payDate, method) {
   // Strategy: try to match existing forecast (by invoice → PO → builder+address fuzzy).
