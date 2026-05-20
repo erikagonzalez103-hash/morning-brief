@@ -4834,7 +4834,23 @@ async function confirmMarkInvoiceSentScheduled() {
   }
 
   // ── 3. Update or create Forecast in Ledger localStorage ──
-  const forecastResult = updateForecastFromInvoice(ctx, payDate, method);
+  let forecastResult = updateForecastFromInvoice(ctx, payDate, method);
+
+  // ── 3b. If multiple candidates were found, ask user to pick one (or create new) ──
+  if (forecastResult.action === 'needs_choice') {
+    const choice = await promptForecastCandidate(forecastResult.candidates, ctx);
+    if (choice === '__create__') {
+      forecastResult = updateForecastFromInvoice(ctx, payDate, method, { createNew: true });
+    } else if (choice != null) {
+      forecastResult = updateForecastFromInvoice(ctx, payDate, method, {
+        targetForecastId: choice,
+        allowBuilderOverwrite: true,
+        allowAmountOverwrite: true,
+      });
+    } else {
+      forecastResult = { matched: false, action: 'cancelled', reason: 'User skipped forecast update' };
+    }
+  }
 
   // ── 4. Build the status line summary ──
   const parts = [];
@@ -4845,6 +4861,9 @@ async function confirmMarkInvoiceSentScheduled() {
       ? `✓ Forecast created midmonth (${forecastResult.builder} · ${forecastResult.address})`
       : `✓ Forecast updated (${forecastResult.builder} · ${forecastResult.address})`);
     status.style.color = '#2A5F3F';
+  } else if (forecastResult.action === 'cancelled') {
+    parts.push('— Forecast: skipped');
+    status.style.color = '#7C7C7C';
   } else {
     parts.push('⚠ Forecast: ' + (forecastResult.reason || 'unknown'));
     status.style.color = '#A06C2C';
@@ -4866,15 +4885,51 @@ async function confirmMarkInvoiceSentScheduled() {
 // Alias kept for any existing call sites
 async function confirmMarkPaidScheduled() { return confirmMarkInvoiceSentScheduled(); }
 
-function updateForecastFromInvoice(ctx, payDate, method) {
-  // Strategy: try to match existing forecast (by invoice → PO → builder+address fuzzy).
-  // If no match, CREATE a new midmonth forecast entry from the invoice data.
+function findForecastCandidates(ctx, forecasts) {
+  // "Candidates" = forecasts whose address contains the same significant word(s) as our parsed
+  // address AND which have NO invoice number set yet. Excludes paid/cancelled.
+  if (!ctx.description) return [];
+  const desc = (ctx.description || '').toLowerCase();
+  const addrFragment = desc.split(/\s+-\s+/)[0].trim();
+  if (!addrFragment) return [];
+  const significantWords = addrFragment.split(/\s+/).filter(w => w.length > 2);
+  if (!significantWords.length) return [];
+  return forecasts.filter(f => {
+    if (f.status === 'paid' || f.status === 'cancelled') return false;
+    if ((f.invoice || '').trim()) return false;
+    const fa = (f.address || '').toLowerCase();
+    if (!fa) return false;
+    return significantWords.every(w => fa.includes(w));
+  });
+}
+
+function updateForecastFromInvoice(ctx, payDate, method, opts) {
+  opts = opts || {};
   try {
     const raw = localStorage.getItem('eg_forecast_v1');
     let forecasts = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(forecasts)) forecasts = [];
 
-    // ── Try to find existing forecast ──
+    // ── User explicitly chose a candidate ──
+    if (opts.targetForecastId != null) {
+      const target = forecasts.find(f => f.id === opts.targetForecastId);
+      if (target) {
+        if (payDate) target.expectedPayDate = payDate;
+        target.paymentMethod = method;
+        if (ctx.invoiceNum && !target.invoice) target.invoice = ctx.invoiceNum;
+        if (ctx.builder && opts.allowBuilderOverwrite) target.builder = ctx.builder;
+        if (ctx.amount && ctx.amount > 0 && opts.allowAmountOverwrite) target.forecastAmount = ctx.amount;
+        localStorage.setItem('eg_forecast_v1', JSON.stringify(forecasts));
+        return { matched: true, action: 'updated', builder: target.builder, address: target.address };
+      }
+    }
+
+    // ── User explicitly chose "Create new" ──
+    if (opts.createNew) {
+      return _createNewForecast(ctx, payDate, method, forecasts);
+    }
+
+    // ── 1. Strict match (invoice / PO / builder+address fuzzy) ──
     let match = null;
     if (ctx.invoiceNum) match = forecasts.find(f => (f.invoice || '').trim() === ctx.invoiceNum.trim());
     if (!match && ctx.poNum) match = forecasts.find(f => (f.jobnum || '').toUpperCase().includes(ctx.poNum.toUpperCase()));
@@ -4888,8 +4943,6 @@ function updateForecastFromInvoice(ctx, payDate, method) {
         return (fb === bLower || bLower.includes(fb) || fb.includes(bLower)) && (desc.includes(fa) || fa.split(' ').some(w => w.length > 3 && desc.includes(w)));
       });
     }
-
-    // ── Match found → update existing ──
     if (match) {
       if (payDate) match.expectedPayDate = payDate;
       match.paymentMethod = method;
@@ -4898,56 +4951,104 @@ function updateForecastFromInvoice(ctx, payDate, method) {
       return { matched: true, action: 'updated', builder: match.builder, address: match.address };
     }
 
-    // ── No match → create new midmonth forecast from invoice data ──
-    // The `month` field represents WHEN THE WORK/INVOICE WAS — always current month for an
-    // invoice we're sending today. Pay date is a separate field (stays as-is for cash flow).
-    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const now = new Date();
-    const monthLabel = MONTH_NAMES[now.getMonth()] + ' ' + now.getFullYear();
-
-    // Parse description into address + job descriptor — "951 Oleander - Mirrors" → addr "951 Oleander", job "Mirrors"
-    let address = (ctx.description || '').trim();
-    let job = '';
-    const splitChars = [' - ', ' — ', ' – '];
-    for (const sep of splitChars) {
-      if (address.includes(sep)) {
-        const parts = address.split(sep);
-        address = parts[0].trim();
-        job = parts.slice(1).join(sep).trim();
-        break;
-      }
-    }
-    // Fallback: if description was just the email subject, strip "Eridion Glass: Invoice ####"
-    if (/^eridion\s*glass/i.test(address)) {
-      address = address.replace(/^eridion\s*glass[:\s\-]+invoice\s*#?\s*\d+\s*[\-—–]?\s*/i, '').trim();
+    // ── 2. Look for loose candidates by address (no invoice yet) ──
+    const candidates = findForecastCandidates(ctx, forecasts);
+    if (candidates.length > 0) {
+      return {
+        matched: false,
+        action: 'needs_choice',
+        candidates: candidates.map(c => ({
+          id: c.id,
+          builder: c.builder,
+          address: c.address,
+          job: c.job,
+          jobnum: c.jobnum,
+          amount: c.forecastAmount,
+          month: c.month,
+        })),
+      };
     }
 
-    const newForecast = {
-      id: Date.now(),
-      type: 'forecast',
-      month: monthLabel,
-      originalMonth: monthLabel,
-      builder: ctx.builder || 'Unknown',
-      address: address || '(no address)',
-      jobnum: ctx.poNum || '',
-      job: job,
-      invoice: ctx.invoiceNum || '',
-      forecastAmount: ctx.amount || 0,
-      expectedPayDate: payDate || null,
-      paymentMethod: method,
-      status: 'forecasted',
-      origin: 'midmonth',
-      payments: [],
-      rollHistory: [],
-      createdFrom: 'morning-brief-invoice-' + (ctx.emailId || Date.now()),
-    };
-    forecasts.unshift(newForecast);
-    localStorage.setItem('eg_forecast_v1', JSON.stringify(forecasts));
-    return { matched: true, action: 'created', builder: newForecast.builder, address: newForecast.address };
+    // ── 3. No candidates → create new midmonth forecast ──
+    return _createNewForecast(ctx, payDate, method, forecasts);
   } catch(err) {
     console.error('Forecast update/create failed:', err);
     return { matched: false, action: 'error', reason: err.message };
   }
+}
+
+// Renders an inline candidate picker inside the modal status area.
+// Returns: forecast id (number) | '__create__' for "create new" | null for cancel.
+function promptForecastCandidate(candidates, ctx) {
+  return new Promise(function(resolve) {
+    const status = document.getElementById('mp-status-line');
+    if (!status) { resolve(null); return; }
+    const fmt$ = function(n) { var v = Number(n) || 0; return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2 }); };
+    const cards = candidates.map(function(c) {
+      return '<div style="display:flex;justify-content:space-between;align-items:center;background:#F5F5F5;border:1px solid #D8D8D8;border-radius:6px;padding:8px 10px;margin-top:6px;font-family:\'DM Sans\',sans-serif;">' +
+        '<div style="font-size:11px;line-height:1.4;color:#1F2A4A;">' +
+          '<div><strong>' + (c.builder || '(no builder)') + '</strong> · ' + (c.address || '') + (c.job ? ' — ' + c.job : '') + '</div>' +
+          '<div style="font-size:10px;color:#7C7C7C;margin-top:2px;">' + fmt$(c.amount) + (c.jobnum ? ' · Job #' + c.jobnum : '') + (c.month ? ' · ' + c.month : '') + '</div>' +
+        '</div>' +
+        '<button data-fcid="' + c.id + '" class="mp-pick-cand" style="padding:6px 12px;background:#2A5F3F;color:white;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;">Use this</button>' +
+      '</div>';
+    }).join('');
+    status.innerHTML =
+      '<div style="font-family:\'DM Sans\',sans-serif;color:#1F2A4A;font-size:12px;font-weight:600;margin-bottom:6px;">Found ' + candidates.length + ' existing forecast' + (candidates.length === 1 ? '' : 's') + ' at this address with no invoice yet. Update one, or create new?</div>' +
+      cards +
+      '<div style="display:flex;gap:6px;margin-top:8px;">' +
+        '<button id="mp-pick-create" style="padding:6px 12px;background:#5A7A99;color:white;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;">+ Create new</button>' +
+        '<button id="mp-pick-cancel" style="padding:6px 12px;background:transparent;color:#7C7C7C;border:1px solid #D8D8D8;border-radius:5px;font-size:11px;cursor:pointer;">Skip forecast</button>' +
+      '</div>';
+    status.style.color = '#1F2A4A';
+    document.querySelectorAll('.mp-pick-cand').forEach(function(btn) {
+      btn.addEventListener('click', function() { resolve(parseInt(btn.getAttribute('data-fcid'), 10)); });
+    });
+    document.getElementById('mp-pick-create').addEventListener('click', function() { resolve('__create__'); });
+    document.getElementById('mp-pick-cancel').addEventListener('click', function() { resolve(null); });
+  });
+}
+
+function _createNewForecast(ctx, payDate, method, forecasts) {
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const now = new Date();
+  const monthLabel = MONTH_NAMES[now.getMonth()] + ' ' + now.getFullYear();
+  let address = (ctx.description || '').trim();
+  let job = '';
+  const splitChars = [' - ', ' — ', ' – '];
+  for (const sep of splitChars) {
+    if (address.includes(sep)) {
+      const parts = address.split(sep);
+      address = parts[0].trim();
+      job = parts.slice(1).join(sep).trim();
+      break;
+    }
+  }
+  if (/^eridion\s*glass/i.test(address)) {
+    address = address.replace(/^eridion\s*glass[:\s\-]+invoice\s*#?\s*\d+\s*[\-—–]?\s*/i, '').trim();
+  }
+  const newForecast = {
+    id: Date.now(),
+    type: 'forecast',
+    month: monthLabel,
+    originalMonth: monthLabel,
+    builder: ctx.builder || 'Unknown',
+    address: address || '(no address)',
+    jobnum: ctx.poNum || '',
+    job: job,
+    invoice: ctx.invoiceNum || '',
+    forecastAmount: ctx.amount || 0,
+    expectedPayDate: payDate || null,
+    paymentMethod: method,
+    status: 'forecasted',
+    origin: 'midmonth',
+    payments: [],
+    rollHistory: [],
+    createdFrom: 'morning-brief-invoice-' + (ctx.emailId || Date.now()),
+  };
+  forecasts.unshift(newForecast);
+  localStorage.setItem('eg_forecast_v1', JSON.stringify(forecasts));
+  return { matched: true, action: 'created', builder: newForecast.builder, address: newForecast.address };
 }
 
 </script>
