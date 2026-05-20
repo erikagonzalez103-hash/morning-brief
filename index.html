@@ -688,6 +688,42 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
   <div class="ts-body" id="task-list"></div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     MARK INVOICE PAID + SCHEDULE MODAL
+     Opens from invoice-sent emails. Collects expected pay date +
+     payment method, updates Monday status, writes expected pay date
+     to the Ledger's Forecast localStorage.
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="mark-paid-modal-overlay" onclick="closeMarkPaidScheduledModal(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
+  <div onclick="event.stopPropagation()" style="background:white;border-radius:12px;padding:24px;width:520px;max-width:92vw;box-shadow:0 8px 30px rgba(0,0,0,.25);">
+    <div style="font-size:16px;font-weight:700;color:#1F2A4A;margin-bottom:4px;">💰 Mark Invoice as Paid + Schedule</div>
+    <div style="font-size:12px;color:#7C7C7C;margin-bottom:18px;" id="mp-subject-line">Invoice details…</div>
+    <div style="background:#F5F5F5;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:#7C7C7C;">Invoice #</span><span id="mp-invoice-num" style="font-family:monospace;color:#1F2A4A;font-weight:600;">—</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:#7C7C7C;">Builder</span><span id="mp-builder" style="color:#1F2A4A;font-weight:500;">—</span></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:#7C7C7C;">Amount</span><span id="mp-amount" style="font-family:monospace;color:#2A5F3F;font-weight:600;">—</span></div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:11px;font-weight:600;color:#7C7C7C;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">When do you expect this to be paid?</label>
+      <input type="date" id="mp-pay-date" style="width:100%;padding:10px 12px;border:1px solid #D8D8D8;border-radius:6px;font-size:14px;font-family:inherit;outline:none;" />
+      <div style="font-size:10px;color:#A8A8A8;margin-top:4px;">This date drives the Cash Flow calendar. Leave blank if unsure.</div>
+    </div>
+    <div style="margin-bottom:18px;">
+      <label style="display:block;font-size:11px;font-weight:600;color:#7C7C7C;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Payment method</label>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+        <label style="display:flex;align-items:center;gap:6px;padding:10px;border:1px solid #D8D8D8;border-radius:6px;cursor:pointer;font-size:13px;"><input type="radio" name="mp-method" value="Check" style="cursor:pointer;" />Check</label>
+        <label style="display:flex;align-items:center;gap:6px;padding:10px;border:1px solid #D8D8D8;border-radius:6px;cursor:pointer;font-size:13px;"><input type="radio" name="mp-method" value="Stripe" style="cursor:pointer;" />Stripe</label>
+        <label style="display:flex;align-items:center;gap:6px;padding:10px;border:1px solid #D8D8D8;border-radius:6px;cursor:pointer;font-size:13px;"><input type="radio" name="mp-method" value="Unknown" checked style="cursor:pointer;" />Unknown</label>
+      </div>
+    </div>
+    <div id="mp-status-line" style="font-size:11px;color:#7C7C7C;min-height:16px;margin-bottom:12px;font-family:monospace;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeMarkPaidScheduledModal(null,true)" style="padding:10px 18px;background:transparent;border:1px solid #D8D8D8;border-radius:6px;font-size:13px;cursor:pointer;color:#7C7C7C;">Cancel</button>
+      <button id="mp-confirm-btn" onclick="confirmMarkPaidScheduled()" style="padding:10px 18px;background:#2A5F3F;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Update Monday + Forecast</button>
+    </div>
+  </div>
+</div>
+
 <script>
 
 const WORKER='https://frosty-base-f01e.erikagonzalez103.workers.dev';
@@ -2741,7 +2777,10 @@ function buildActions(item){
   const btns=[];
   const tags=item.tags||[];
   const type=item.type||'';
-  const isInvoiceSent = tags.includes('invoice-sent') || type === 'invoice_sent';
+  // Detection: explicit tag/type from AI classifier, OR fallback to "Eridion Glass.*Invoice" subject pattern
+  // (matches your own BCC'd Smart Glazier sends when the AI missed the classification)
+  const subjectLooksLikeSentInvoice = /eridion\s*glass[:\s\-]+invoice\s*#?\s*\d+/i.test(item.subject || '');
+  const isInvoiceSent = tags.includes('invoice-sent') || type === 'invoice_sent' || subjectLooksLikeSentInvoice;
   const isACH = tags.includes('ach');
   const isPayment = (type==='payment'||tags.includes('payment')) && !isInvoiceSent && !isACH;
   const isPO = type==='po'||tags.includes('po');
@@ -2786,6 +2825,18 @@ function buildActions(item){
       data-emailid="${esc(item.id||'')}"
       data-builder="${esc(item.builder||'Grand Homes')}"
       onclick="handleInvoiceSent(this,event)">Mark invoice sent in Monday + File</button>`);
+
+  // ✦ New: schedule expected payment — updates Monday status to "Paid" + writes expected pay date
+  // into the Ledger's Forecast (so Cash Flow knows when receipts are coming)
+  if(isInvoiceSent)
+    btns.push(`<button class="act-btn primary" style="background:#2A5F3F;border-color:#2A5F3F"
+      data-emailid="${esc(item.id||'')}"
+      data-builder="${esc(item.builder||item.from||'')}"
+      data-description="${esc(item.description||item.subject||'')}"
+      data-subject="${esc(item.subject||'')}"
+      data-preview="${esc(item.preview||'')}"
+      data-amount="${esc(String(item.amount||0))}"
+      onclick="openMarkPaidScheduledModal(this,event)">💰 Mark as Paid + Schedule</button>`);
 
   if(isACH)
     btns.push(`<button class="act-btn primary" 
@@ -4593,6 +4644,192 @@ document.addEventListener('keydown', (e) => {
     toggleSidebar();
   }
 });
+
+
+// ═══════════════════════════════════════════════════════════════════
+// MARK INVOICE AS PAID + SCHEDULE EXPECTED PAYMENT
+// ═══════════════════════════════════════════════════════════════════
+let _markPaidContext = null;
+
+function extractInvoiceNumber(s) { const m=(s||'').match(/invoice\s*#?\s*(\d+)/i); return m ? m[1] : ''; }
+function extractPONumber(s) { const m=(s||'').match(/p\.?o\.?\s*#?\s*([A-Z0-9\-]+)/i); return m ? m[1] : ''; }
+
+function openMarkPaidScheduledModal(btn, event) {
+  if (event) event.stopPropagation();
+  const subject = btn.getAttribute('data-subject') || '';
+  const preview = btn.getAttribute('data-preview') || '';
+  const builder = btn.getAttribute('data-builder') || '';
+  const description = btn.getAttribute('data-description') || '';
+  const emailId = btn.getAttribute('data-emailid') || '';
+  const amount = parseFloat(btn.getAttribute('data-amount')) || 0;
+  const invoiceNum = extractInvoiceNumber(subject) || extractInvoiceNumber(preview);
+  const poNum = extractPONumber(subject + ' ' + preview);
+  _markPaidContext = { subject, preview, builder, description, emailId, amount, invoiceNum, poNum, btn };
+  document.getElementById('mp-subject-line').textContent = subject;
+  document.getElementById('mp-invoice-num').textContent = invoiceNum ? '#' + invoiceNum : '(none found)';
+  document.getElementById('mp-builder').textContent = builder || '(unknown)';
+  document.getElementById('mp-amount').textContent = amount > 0 ? '$' + amount.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—';
+  document.getElementById('mp-pay-date').value = '';
+  document.getElementById('mp-status-line').textContent = '';
+  document.querySelectorAll('input[name="mp-method"]').forEach(r => { r.checked = r.value === 'Unknown'; });
+  document.getElementById('mp-confirm-btn').disabled = false;
+  document.getElementById('mp-confirm-btn').textContent = 'Update Monday + Forecast';
+  document.getElementById('mp-confirm-btn').onclick = confirmMarkPaidScheduled;
+  document.getElementById('mark-paid-modal-overlay').style.display = 'flex';
+}
+
+function closeMarkPaidScheduledModal(e, force) {
+  if (force || (e && e.target === document.getElementById('mark-paid-modal-overlay'))) {
+    document.getElementById('mark-paid-modal-overlay').style.display = 'none';
+    _markPaidContext = null;
+  }
+}
+
+async function confirmMarkPaidScheduled() {
+  if (!_markPaidContext) return;
+  const ctx = _markPaidContext;
+  const payDate = document.getElementById('mp-pay-date').value || null;
+  const method = (document.querySelector('input[name="mp-method"]:checked') || {}).value || 'Unknown';
+  const btn = document.getElementById('mp-confirm-btn');
+  const status = document.getElementById('mp-status-line');
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  status.textContent = '→ Updating Monday.com...';
+  status.style.color = '#7C7C7C';
+
+  let mondayOk = false;
+  try {
+    const mRes = await fetch(`${WORKER_URL}/monday`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'PAYMENT_RECEIVED',
+        builder: ctx.builder || 'unknown',
+        address: ctx.description || '',
+        emailId: ctx.emailId || '',
+        invoiceNum: ctx.invoiceNum || '',
+        poNum: ctx.poNum || '',
+        expectedPayDate: payDate,
+        paymentMethod: method,
+      })
+    });
+    const mData = await mRes.json();
+    mondayOk = mData.action === 'status_updated' || mData.action === 'payment_marked';
+    status.textContent = mondayOk ? '✓ Monday updated' : '⚠ Monday update failed (continuing to Forecast)';
+  } catch(err) {
+    status.textContent = '⚠ Monday error: ' + err.message + ' (continuing to Forecast)';
+    console.error('Monday update failed:', err);
+  }
+
+  const forecastResult = updateForecastFromInvoice(ctx, payDate, method);
+  if (forecastResult.matched) {
+    const verb = forecastResult.action === 'created' ? '✓ Forecast created (midmonth)' : '✓ Forecast updated';
+    status.textContent = (mondayOk ? '✓ Monday updated · ' : '⚠ Monday issue · ') + `${verb} (${forecastResult.builder} · ${forecastResult.address})`;
+    status.style.color = '#2A5F3F';
+  } else {
+    status.textContent = (mondayOk ? '✓ Monday updated · ' : '⚠ Monday issue · ') + '⚠ Forecast write failed: ' + (forecastResult.reason || 'unknown');
+    status.style.color = '#A06C2C';
+  }
+
+  if (ctx.btn) {
+    ctx.btn.textContent = '✓ Scheduled';
+    ctx.btn.style.background = 'var(--green)';
+    ctx.btn.style.borderColor = 'var(--green)';
+    ctx.btn.style.color = 'white';
+    ctx.btn.disabled = true;
+  }
+  btn.textContent = (mondayOk || forecastResult.matched) ? '✓ Done — close' : '⚠ Issues — close';
+  btn.onclick = function() { closeMarkPaidScheduledModal(null, true); };
+}
+
+function updateForecastFromInvoice(ctx, payDate, method) {
+  // Strategy: try to match existing forecast (by invoice → PO → builder+address fuzzy).
+  // If no match, CREATE a new midmonth forecast entry from the invoice data.
+  try {
+    const raw = localStorage.getItem('eg_forecast_v1');
+    let forecasts = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(forecasts)) forecasts = [];
+
+    // ── Try to find existing forecast ──
+    let match = null;
+    if (ctx.invoiceNum) match = forecasts.find(f => (f.invoice || '').trim() === ctx.invoiceNum.trim());
+    if (!match && ctx.poNum) match = forecasts.find(f => (f.jobnum || '').toUpperCase().includes(ctx.poNum.toUpperCase()));
+    if (!match && ctx.builder && ctx.description) {
+      const bLower = ctx.builder.toLowerCase();
+      const desc = ctx.description.toLowerCase();
+      match = forecasts.find(f => {
+        const fb = (f.builder || '').toLowerCase();
+        const fa = (f.address || '').toLowerCase();
+        if (!fb || !fa) return false;
+        return (fb === bLower || bLower.includes(fb) || fb.includes(bLower)) && (desc.includes(fa) || fa.split(' ').some(w => w.length > 3 && desc.includes(w)));
+      });
+    }
+
+    // ── Match found → update existing ──
+    if (match) {
+      if (payDate) match.expectedPayDate = payDate;
+      match.paymentMethod = method;
+      if (ctx.invoiceNum && !match.invoice) match.invoice = ctx.invoiceNum;
+      localStorage.setItem('eg_forecast_v1', JSON.stringify(forecasts));
+      return { matched: true, action: 'updated', builder: match.builder, address: match.address };
+    }
+
+    // ── No match → create new midmonth forecast from invoice data ──
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const now = new Date();
+    // If payDate is set, use that month; otherwise current month
+    let targetMonth = now;
+    if (payDate) {
+      const pd = new Date(payDate + 'T00:00:00');
+      if (!isNaN(pd.getTime())) targetMonth = pd;
+    }
+    const monthLabel = MONTH_NAMES[targetMonth.getMonth()] + ' ' + targetMonth.getFullYear();
+
+    // Parse description into address + job descriptor — "951 Oleander - Mirrors" → addr "951 Oleander", job "Mirrors"
+    let address = (ctx.description || '').trim();
+    let job = '';
+    const splitChars = [' - ', ' — ', ' – '];
+    for (const sep of splitChars) {
+      if (address.includes(sep)) {
+        const parts = address.split(sep);
+        address = parts[0].trim();
+        job = parts.slice(1).join(sep).trim();
+        break;
+      }
+    }
+    // Fallback: if description was just the email subject, strip "Eridion Glass: Invoice ####"
+    if (/^eridion\s*glass/i.test(address)) {
+      address = address.replace(/^eridion\s*glass[:\s\-]+invoice\s*#?\s*\d+\s*[\-—–]?\s*/i, '').trim();
+    }
+
+    const newForecast = {
+      id: Date.now(),
+      type: 'forecast',
+      month: monthLabel,
+      originalMonth: monthLabel,
+      builder: ctx.builder || 'Unknown',
+      address: address || '(no address)',
+      jobnum: ctx.poNum || '',
+      job: job,
+      invoice: ctx.invoiceNum || '',
+      forecastAmount: ctx.amount || 0,
+      expectedPayDate: payDate || null,
+      paymentMethod: method,
+      status: 'forecasted',
+      origin: 'midmonth',
+      payments: [],
+      rollHistory: [],
+      createdFrom: 'morning-brief-invoice-' + (ctx.emailId || Date.now()),
+    };
+    forecasts.unshift(newForecast);
+    localStorage.setItem('eg_forecast_v1', JSON.stringify(forecasts));
+    return { matched: true, action: 'created', builder: newForecast.builder, address: newForecast.address };
+  } catch(err) {
+    console.error('Forecast update/create failed:', err);
+    return { matched: false, action: 'error', reason: err.message };
+  }
+}
+
 </script>
 </body>
 </html>
