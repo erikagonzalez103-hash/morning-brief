@@ -4708,9 +4708,11 @@ function openMarkInvoiceSentModal(btn, event) {
   let builder = (!rawBuilder || selfNames.test(rawBuilder)) && parsed.builder ? parsed.builder : (rawBuilder || parsed.builder || '');
 
   // Description: prefer parsed address + job; fall back to raw
+  // Use PLAIN HYPHEN (-) not en-dash (–) — Monday board titles use plain hyphens,
+  // so the Worker's string lookup needs to match exactly.
   let description = rawDescription;
   if (parsed.address) {
-    description = parsed.address + (parsed.job ? ' – ' + parsed.job : '');
+    description = parsed.address + (parsed.job ? ' - ' + parsed.job : '');
   }
 
   const invoiceNum = extractInvoiceNumber(subject) || extractInvoiceNumber(preview);
