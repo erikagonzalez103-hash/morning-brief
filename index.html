@@ -698,10 +698,15 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
   <div onclick="event.stopPropagation()" style="background:white;border-radius:12px;padding:24px;width:520px;max-width:92vw;box-shadow:0 8px 30px rgba(0,0,0,.25);">
     <div style="font-size:16px;font-weight:700;color:#1F2A4A;margin-bottom:4px;">✉ Invoice Sent — Schedule Expected Payment</div>
     <div style="font-size:12px;color:#7C7C7C;margin-bottom:18px;" id="mp-subject-line">Invoice details…</div>
-    <div style="background:#F5F5F5;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;">
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:#7C7C7C;">Invoice #</span><span id="mp-invoice-num" style="font-family:monospace;color:#1F2A4A;font-weight:600;">—</span></div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:#7C7C7C;">Builder</span><span id="mp-builder" style="color:#1F2A4A;font-weight:500;">—</span></div>
-      <div style="display:flex;justify-content:space-between;"><span style="color:#7C7C7C;">Amount</span><span id="mp-amount" style="font-family:monospace;color:#2A5F3F;font-weight:600;">—</span></div>
+    <div style="background:#F5F5F5;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;display:grid;grid-template-columns:auto 1fr;gap:8px 14px;align-items:center;">
+      <span style="color:#7C7C7C;">Invoice #</span>
+      <input type="text" id="mp-invoice-num-input" placeholder="auto-extracted" style="padding:6px 8px;border:1px solid #D8D8D8;border-radius:4px;font-family:monospace;font-size:12px;color:#1F2A4A;font-weight:600;outline:none;background:white;" />
+      <span style="color:#7C7C7C;">Builder</span>
+      <input type="text" id="mp-builder-input" placeholder="e.g. D.R. Horton" style="padding:6px 8px;border:1px solid #D8D8D8;border-radius:4px;font-size:12px;color:#1F2A4A;font-weight:500;outline:none;background:white;" />
+      <span style="color:#7C7C7C;">Address / scope</span>
+      <input type="text" id="mp-address-input" placeholder="e.g. 951 Oleander – Showers" style="padding:6px 8px;border:1px solid #D8D8D8;border-radius:4px;font-size:12px;color:#1F2A4A;font-weight:500;outline:none;background:white;" />
+      <span style="color:#7C7C7C;">Amount</span>
+      <input type="number" id="mp-amount-input" step="0.01" placeholder="0.00" style="padding:6px 8px;border:1px solid #D8D8D8;border-radius:4px;font-family:monospace;font-size:12px;color:#2A5F3F;font-weight:600;outline:none;background:white;" />
     </div>
     <div style="margin-bottom:14px;">
       <label style="display:block;font-size:11px;font-weight:600;color:#7C7C7C;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">When do you expect this to be paid?</label>
@@ -4653,23 +4658,69 @@ document.addEventListener('keydown', (e) => {
 let _markPaidContext = null;
 
 function extractInvoiceNumber(s) { const m=(s||'').match(/invoice\s*#?\s*(\d+)/i); return m ? m[1] : ''; }
-function extractPONumber(s) { const m=(s||'').match(/p\.?o\.?\s*#?\s*([A-Z0-9\-]+)/i); return m ? m[1] : ''; }
+function extractPONumber(s) { const m=(s||'').match(/p\.?o\.?\s*#?\s*([A-Z0-9\-\s]+?)(?:[,.\s]|$)/i); return m ? m[1].trim() : ''; }
+
+// Parse the body of a Smart Glazier BCC'd invoice email — typical format:
+//   "Hello [Builder Name], Please find attached the invoice for [address] – [job] – PO# [number]."
+// Dashes can be en-dash (–), em-dash (—), or hyphen (-). Returns whatever it can find.
+function parseInvoiceEmailBody(text) {
+  const out = { builder: '', address: '', job: '', poNumber: '' };
+  if (!text) return out;
+
+  // Builder: greeting line "Hello [Name]," / "Hi [Name]," / "Dear [Name],"
+  const greet = text.match(/\b(?:hello|hi|dear)\s+([A-Z][A-Za-z0-9.&'\- ]{2,80}?)\s*,/);
+  if (greet) out.builder = greet[1].trim();
+
+  // PO# — capture everything after "PO#" up to the closing punctuation or newline
+  const poM = text.match(/p\.?o\.?\s*#?\s*([A-Z0-9][\w\s\-–—]*?)(?:[.,\n]|$)/i);
+  if (poM) out.poNumber = poM[1].trim();
+
+  // Address: between "for" and first dash (any kind)
+  const addrM = text.match(/\bfor\s+([^\n–—\-]+?)\s*[–—\-]/i);
+  if (addrM) out.address = addrM[1].trim();
+
+  // Job/scope: between first dash and "PO" (the descriptor in the middle)
+  const jobM = text.match(/[–—\-]\s*([^\n–—\-]+?)\s*[–—\-]\s*P\.?O\.?/i);
+  if (jobM) out.job = jobM[1].trim();
+
+  return out;
+}
 
 function openMarkInvoiceSentModal(btn, event) {
   if (event) event.stopPropagation();
   const subject = btn.getAttribute('data-subject') || '';
   const preview = btn.getAttribute('data-preview') || '';
-  const builder = btn.getAttribute('data-builder') || '';
-  const description = btn.getAttribute('data-description') || '';
+  const rawBuilder = btn.getAttribute('data-builder') || '';
+  const rawDescription = btn.getAttribute('data-description') || '';
   const emailId = btn.getAttribute('data-emailid') || '';
   const amount = parseFloat(btn.getAttribute('data-amount')) || 0;
+
+  // Parse the email body for the REAL builder name + address + PO
+  // (the From field is "Erika Gonzalez" since these are BCC'd to herself)
+  const parsed = parseInvoiceEmailBody(subject + ' ' + preview + ' ' + rawDescription);
+
+  // Decide which builder to trust:
+  //   - If raw is empty OR looks like Erika's own name OR "Eridion" → prefer parsed
+  //   - Otherwise raw wins
+  const selfNames = /erika|eridion\s*glass/i;
+  let builder = (!rawBuilder || selfNames.test(rawBuilder)) && parsed.builder ? parsed.builder : (rawBuilder || parsed.builder || '');
+
+  // Description: prefer parsed address + job; fall back to raw
+  let description = rawDescription;
+  if (parsed.address) {
+    description = parsed.address + (parsed.job ? ' – ' + parsed.job : '');
+  }
+
   const invoiceNum = extractInvoiceNumber(subject) || extractInvoiceNumber(preview);
-  const poNum = extractPONumber(subject + ' ' + preview);
+  const poNum = parsed.poNumber || extractPONumber(subject + ' ' + preview);
+
   _markPaidContext = { subject, preview, builder, description, emailId, amount, invoiceNum, poNum, btn };
+
   document.getElementById('mp-subject-line').textContent = subject;
-  document.getElementById('mp-invoice-num').textContent = invoiceNum ? '#' + invoiceNum : '(none found)';
-  document.getElementById('mp-builder').textContent = builder || '(unknown)';
-  document.getElementById('mp-amount').textContent = amount > 0 ? '$' + amount.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—';
+  document.getElementById('mp-invoice-num-input').value = invoiceNum || '';
+  document.getElementById('mp-builder-input').value = builder || '';
+  document.getElementById('mp-address-input').value = description || '';
+  document.getElementById('mp-amount-input').value = amount > 0 ? amount.toFixed(2) : '';
   document.getElementById('mp-pay-date').value = '';
   document.getElementById('mp-status-line').textContent = '';
   document.querySelectorAll('input[name="mp-method"]').forEach(r => { r.checked = r.value === 'Unknown'; });
@@ -4692,6 +4743,13 @@ function closeMarkPaidScheduledModal(e, force) {
 async function confirmMarkInvoiceSentScheduled() {
   if (!_markPaidContext) return;
   const ctx = _markPaidContext;
+  // Pick up any user edits to the auto-extracted fields
+  ctx.invoiceNum = (document.getElementById('mp-invoice-num-input').value || '').trim() || ctx.invoiceNum;
+  ctx.builder    = (document.getElementById('mp-builder-input').value    || '').trim() || ctx.builder;
+  ctx.description = (document.getElementById('mp-address-input').value   || '').trim() || ctx.description;
+  const amtRaw = parseFloat(document.getElementById('mp-amount-input').value);
+  if (!isNaN(amtRaw) && amtRaw > 0) ctx.amount = amtRaw;
+
   const payDate = document.getElementById('mp-pay-date').value || null;
   const method = (document.querySelector('input[name="mp-method"]:checked') || {}).value || 'Unknown';
   const btn = document.getElementById('mp-confirm-btn');
