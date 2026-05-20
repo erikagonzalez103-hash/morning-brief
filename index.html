@@ -4789,27 +4789,45 @@ async function confirmMarkInvoiceSentScheduled() {
   }
 
   // ── 2. File the email (preserves the behavior of the old "Mark invoice sent + File" button) ──
+  // ── File the email using the same pattern as the regular "📂 File" button.
+  // First try smart-file with overridePath hint (the field the Worker actually honors,
+  // discovered from pickFolder()). If the Worker still can't decide, fall back to the
+  // existing folder picker UI (openFolderPicker) — same UX you already use.
   let fileOk = false;
+  let fileDeferred = false;
   if (ctx.emailId) {
     try {
       status.textContent = '→ Filing email...';
-      // Erika files by ADDRESS only (e.g. "951 Oleander"), not by address+scope.
-      // Send the address as folderHint so the Worker has the right target name.
       const folderHint = (ctx.description || '').split(/\s+-\s+/)[0].trim();
-      console.log('[smart-file] sending folderHint:', folderHint, 'for emailId:', ctx.emailId);
+      console.log('[smart-file] trying overridePath:', folderHint, 'for emailId:', ctx.emailId);
       const fileRes = await fetch(`${WORKER_URL}/email/smart-file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           emailId: ctx.emailId,
-          folderHint: folderHint,   // e.g. "951 Oleander"
-          address: folderHint,      // duplicate field name in case the Worker reads either
-          builder: ctx.builder || '',
+          overridePath: folderHint,   // the field name the Worker actually uses (per pickFolder)
         })
       });
       const fileData = await fileRes.json();
       console.log('[smart-file] response:', fileData);
-      fileOk = fileData.action === 'filed';
+
+      if (fileData.action === 'filed') {
+        fileOk = true;
+      } else if (fileData.action === 'needs_folder_choice' && typeof openFolderPicker === 'function') {
+        // Worker couldn't pick automatically — open the existing folder picker UX.
+        // The workflow itself is "done"; filing becomes a one-click follow-up.
+        console.log('[smart-file] opening folder picker for manual pick');
+        try {
+          openFolderPicker(ctx.emailId, fileData.originalFolderId || null, null);
+          fileDeferred = true;
+        } catch(perr) { console.error('Folder picker open failed:', perr); }
+      } else if (fileData.action === 'low_confidence_suggestion' && typeof showLowConfidencePrompt === 'function') {
+        // Worker has a guess but wants confirmation
+        try {
+          showLowConfidencePrompt(ctx.emailId, fileData, null, '📂 File');
+          fileDeferred = true;
+        } catch(perr) { console.error('Low-confidence prompt failed:', perr); }
+      }
     } catch(err) {
       console.error('File failed:', err);
     }
@@ -4821,7 +4839,7 @@ async function confirmMarkInvoiceSentScheduled() {
   // ── 4. Build the status line summary ──
   const parts = [];
   parts.push(mondayOk ? '✓ Monday: sent' : '⚠ Monday issue');
-  parts.push(fileOk ? '✓ Filed' : (ctx.emailId ? '⚠ File issue' : 'skip file'));
+  parts.push(fileOk ? '✓ Filed' : (fileDeferred ? '📂 Folder picker open — click to file' : (ctx.emailId ? '⚠ File issue' : 'skip file')));
   if (forecastResult.matched) {
     parts.push(forecastResult.action === 'created'
       ? `✓ Forecast created midmonth (${forecastResult.builder} · ${forecastResult.address})`
