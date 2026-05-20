@@ -4793,12 +4793,22 @@ async function confirmMarkInvoiceSentScheduled() {
   if (ctx.emailId) {
     try {
       status.textContent = '→ Filing email...';
+      // Erika files by ADDRESS only (e.g. "951 Oleander"), not by address+scope.
+      // Send the address as folderHint so the Worker has the right target name.
+      const folderHint = (ctx.description || '').split(/\s+-\s+/)[0].trim();
+      console.log('[smart-file] sending folderHint:', folderHint, 'for emailId:', ctx.emailId);
       const fileRes = await fetch(`${WORKER_URL}/email/smart-file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailId: ctx.emailId })
+        body: JSON.stringify({
+          emailId: ctx.emailId,
+          folderHint: folderHint,   // e.g. "951 Oleander"
+          address: folderHint,      // duplicate field name in case the Worker reads either
+          builder: ctx.builder || '',
+        })
       });
       const fileData = await fileRes.json();
+      console.log('[smart-file] response:', fileData);
       fileOk = fileData.action === 'filed';
     } catch(err) {
       console.error('File failed:', err);
@@ -4871,15 +4881,11 @@ function updateForecastFromInvoice(ctx, payDate, method) {
     }
 
     // ── No match → create new midmonth forecast from invoice data ──
+    // The `month` field represents WHEN THE WORK/INVOICE WAS — always current month for an
+    // invoice we're sending today. Pay date is a separate field (stays as-is for cash flow).
     const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const now = new Date();
-    // If payDate is set, use that month; otherwise current month
-    let targetMonth = now;
-    if (payDate) {
-      const pd = new Date(payDate + 'T00:00:00');
-      if (!isNaN(pd.getTime())) targetMonth = pd;
-    }
-    const monthLabel = MONTH_NAMES[targetMonth.getMonth()] + ' ' + targetMonth.getFullYear();
+    const monthLabel = MONTH_NAMES[now.getMonth()] + ' ' + now.getFullYear();
 
     // Parse description into address + job descriptor — "951 Oleander - Mirrors" → addr "951 Oleander", job "Mirrors"
     let address = (ctx.description || '').trim();
