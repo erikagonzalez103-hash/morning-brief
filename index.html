@@ -4880,6 +4880,9 @@ async function confirmMarkInvoiceSentScheduled() {
   }
   btn.textContent = (mondayOk || forecastResult.matched) ? '✓ Done — close' : '⚠ Issues — close';
   btn.onclick = function() { closeMarkPaidScheduledModal(null, true); };
+  // Re-enable the button so the close handler actually fires when clicked.
+  // (btn.disabled was set to true at the start of the workflow to prevent double-clicks.)
+  btn.disabled = false;
 }
 
 // Alias kept for any existing call sites
