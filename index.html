@@ -4677,8 +4677,9 @@ function parseInvoiceEmailBody(text) {
   const poM = text.match(/p\.?o\.?\s*#?\s*([A-Z0-9][\w\s\-–—]*?)(?:[.,\n]|$)/i);
   if (poM) out.poNumber = poM[1].trim();
 
-  // Address: between "for" and first dash (any kind)
-  const addrM = text.match(/\bfor\s+([^\n–—\-]+?)\s*[–—\-]/i);
+  // Address: between "for" and first dash, period, "Please", newline, or end-of-text.
+  // Handles "for X – Y" (full template with scope) AND "for X." (no scope appended).
+  const addrM = text.match(/\bfor\s+([^\n–—\-]+?)\s*(?:[–—\-]|\.|\bplease\b|\n|$)/i);
   if (addrM) out.address = addrM[1].trim();
 
   // Job/scope: between first dash and "PO" (the descriptor in the middle)
@@ -4758,6 +4759,19 @@ async function confirmMarkInvoiceSentScheduled() {
   const method = (document.querySelector('input[name="mp-method"]:checked') || {}).value || 'Unknown';
   const btn = document.getElementById('mp-confirm-btn');
   const status = document.getElementById('mp-status-line');
+
+  // ── Sanity check: refuse to run if the address field is junk ──
+  // If the auto-detector failed, ctx.description ends up being the email subject
+  // ("Eridion Glass: Invoice 2100"). Sending that to Monday silently succeeds
+  // as not_found and looks like everything worked. Block here instead.
+  if (!ctx.description || /^eridion\s*glass[:\s\-]+invoice/i.test(ctx.description.trim())) {
+    status.textContent = '⚠ Please type the site address before continuing';
+    status.style.color = '#A06C2C';
+    const addrInput = document.getElementById('mp-address-input');
+    if (addrInput) { addrInput.style.borderColor = '#A06C2C'; addrInput.focus(); }
+    return;
+  }
+
   btn.disabled = true;
   btn.textContent = 'Updating…';
   status.textContent = '→ Updating Monday status to Invoice Sent...';
