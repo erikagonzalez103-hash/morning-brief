@@ -591,6 +591,11 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     <div><div class="last-sync" id="last-sync-time"></div></div>
   </div>
 
+  <div id="demo-banner" style="display:none;margin:16px 0;padding:14px 18px;border-radius:10px;background:#FDECEA;border:1px solid #E0746A;color:#8A2A1F;font-size:13px;line-height:1.5">
+    <strong style="display:block;font-size:14px;margin-bottom:4px">⚠ Showing sample data — these are NOT your real numbers.</strong>
+    <span id="demo-banner-detail">The Morning Brief backend (Francisco) can't be reached, so the app is displaying built-in demo content. Invoices, payments and amounts below are placeholders.</span>
+  </div>
+
   <div id="francisco-activity-panel" style="display:none;margin:16px 0"></div>
   <div id="friday-banner" style="display:none"></div>
   <div class="stats">
@@ -810,10 +815,15 @@ async function syncAll(){
       lastData = data;
     }
     render(lastData);
-    setConn('live');
+    setConn(isEmpty ? 'error' : 'live');
     loadActions();
     document.getElementById('last-sync-time').textContent=(isEmpty ? 'Demo mode · ' : 'Synced ')+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     document.getElementById('sync-status').textContent=isEmpty ? 'Demo' : 'Live';
+    const banner=document.getElementById('demo-banner');
+    if(banner){
+      banner.style.display=isEmpty?'block':'none';
+      if(isEmpty)document.getElementById('demo-banner-detail').textContent='The backend reached, but returned no data (likely an expired Outlook/Xero login or empty mailbox). The invoices, payments and amounts below are placeholder samples, not your real numbers.';
+    }
   }catch(e){
     console.error(e);
     // On error, also fall back to demo data
@@ -823,6 +833,8 @@ async function syncAll(){
     document.getElementById('brief-sub').textContent='Could not reach Francisco — showing demo data.';
     document.getElementById('sync-status').textContent='Demo';
     document.getElementById('last-sync-time').textContent='Demo mode';
+    const banner=document.getElementById('demo-banner');
+    if(banner){banner.style.display='block';document.getElementById('demo-banner-detail').textContent='The Morning Brief backend (Francisco) can’t be reached, so the app is displaying built-in demo content. Invoices, payments and amounts below are placeholders, not your real numbers.';}
   }
   btn.classList.remove('syncing');
   icon.textContent='↻';
