@@ -146,6 +146,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
   <div class="lib-header">
     <div class="lib-title">Living <em>Process Library</em></div>
     <div class="lib-sub">Eridion's institutional knowledge — how we work, documented and always current. Francisco learns from this. So does everyone else.</div>
+    <div id="lib-source-badge" style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#8899AA;margin-top:6px">Built-in copy</div>
   </div>
 
   <div class="filter-bar">
@@ -539,20 +540,34 @@ let editingId = null;
 let stepCount = 2;
 
 // ── INIT ─────────────────────────────────────────────────────────────
-const LIBRARY_VERSION = '1.3';
+// Phase 2: the Process Library lives in Worker KV (processes:library) so
+// Francisco can read and eventually execute it. This page renders the KV
+// copy and falls back to the built-in seed when offline.
+const LIBRARY_VERSION = '2.0';
+const PROC_WORKER = 'https://frosty-base-f01e.erikagonzalez103.workers.dev';
 
 function init() {
-  // Clear any stale cached data and always start fresh from seeds
-  // User additions are saved on top of seeds via saveToStorage()
   localStorage.removeItem('eridion_processes');
   localStorage.setItem('eridion_processes_version', LIBRARY_VERSION);
   processes = [...SEED_PROCESSES];
-  saveToStorage();
   renderGrid();
+  fetch(PROC_WORKER + '/processes')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(d => {
+      if (d && Array.isArray(d.processes) && d.processes.length) {
+        processes = d.processes;
+        renderGrid();
+        var badge = document.getElementById('lib-source-badge');
+        if (badge) { badge.textContent = 'Live from Francisco (KV)'; badge.style.color = '#3CA83C'; }
+      }
+    })
+    .catch(() => { /* offline — seed copy already rendered */ });
 }
 
 function saveToStorage() {
   localStorage.setItem('eridion_processes', JSON.stringify(processes));
+  // Push the full library back to KV so edits reach Francisco too.
+  fetch(PROC_WORKER + '/processes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ processes }) }).catch(function(){});
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────

@@ -609,6 +609,22 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     <span id="ods-text"></span>
     &nbsp;<a href="https://erikagonzalez103-hash.github.io/order-tracker/" style="color:#8A6A1F;font-weight:600">Open Jobs →</a>
   </div>
+
+  <!-- 8-week Cash Calendar — fed by /cashflow/projection (Xero + Ledger + Order Tracker joined server-side) -->
+  <div id="cash-calendar-panel" style="display:none;margin:16px 0;padding:16px 18px;border-radius:10px;background:#fff;border:1px solid #E3E6EA">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:700;color:#0D1B2A">📅 Cash Calendar — next 8 weeks</div>
+      <div style="font-size:11px;color:#999" id="ccal-meta"></div>
+    </div>
+    <div id="ccal-backlog" style="font-size:12px;color:#555;margin-bottom:8px"></div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="text-align:left;color:#999;font-size:10px;text-transform:uppercase;letter-spacing:1px">
+        <th style="padding:4px 6px">Week</th><th style="padding:4px 6px;text-align:right">In</th><th style="padding:4px 6px;text-align:right">Out</th><th style="padding:4px 6px;text-align:right">Net</th><th style="padding:4px 6px;text-align:right">Balance</th>
+      </tr></thead>
+      <tbody id="ccal-rows"></tbody>
+    </table>
+    <div id="ccal-note" style="font-size:11px;color:#aaa;margin-top:8px"></div>
+  </div>
   <div class="stats">
     <div class="stat urgent" onclick="scroll2('priority-section')"><div class="stat-num is-red" id="s-priority">—</div><div class="stat-label">Act today</div></div>
     <div class="stat warn" onclick="scroll2('stale-section')"><div class="stat-num is-amber" id="s-stale">—</div><div class="stat-label">Stale &gt;24h</div></div>
@@ -3683,7 +3699,37 @@ async function dismissPendingAction(id, btn) {
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(loadFranciscoActivity, 1500);
   loadOrdersDueStrip();
+  loadCashCalendar();
 });
+
+// 8-week Cash Calendar panel — /cashflow/projection joins Xero cash + AR,
+// Ledger bills/forecasts, and Order Tracker due dates server-side.
+async function loadCashCalendar() {
+  try {
+    const res = await fetch(`${WORKER}/cashflow/projection?weeks=8`);
+    if (!res.ok) return;
+    const p = await res.json();
+    if (!p || !Array.isArray(p.weeks) || !p.weeks.length) return;
+    const fmt$ = n => '$' + Math.round(n || 0).toLocaleString();
+    document.getElementById('ccal-meta').textContent =
+      (p.startingCash != null && !p.cashUnavailable ? 'Starting cash ' + fmt$(p.startingCash) : 'Cash unavailable — reconnect Xero') +
+      ' · red line ' + fmt$(p.threshold);
+    if (p.overdue && (p.overdue.in || p.overdue.out)) {
+      document.getElementById('ccal-backlog').innerHTML =
+        'Past-due backlog: <strong style="color:#0F6E56">' + fmt$(p.overdue.in) + ' owed to you</strong> · <strong style="color:#A03A2A">' + fmt$(p.overdue.out) + ' you owe vendors</strong>';
+    }
+    document.getElementById('ccal-rows').innerHTML = p.weeks.map(w =>
+      `<tr style="${w.flag ? 'background:#FDECEA;' : ''}border-top:1px solid #F0F2F4">
+        <td style="padding:5px 6px">${w.flag ? '🔴 ' : ''}${w.label}<span style="color:#bbb;font-size:10px"> ${w.from.slice(5)}</span></td>
+        <td style="padding:5px 6px;text-align:right;color:#0F6E56">+${fmt$(w.receipts)}</td>
+        <td style="padding:5px 6px;text-align:right;color:#A03A2A">−${fmt$(w.payments)}</td>
+        <td style="padding:5px 6px;text-align:right">${w.net >= 0 ? '+' : '−'}${fmt$(Math.abs(w.net))}</td>
+        <td style="padding:5px 6px;text-align:right;font-weight:600">${fmt$(w.balance)}</td>
+      </tr>`).join('');
+    document.getElementById('ccal-note').textContent = (p.notes || []).join(' · ');
+    document.getElementById('cash-calendar-panel').style.display = 'block';
+  } catch (e) { /* offline — panel stays hidden */ }
+}
 
 // Live vendor-payments-due strip: real Order Tracker data via /orders/due-report.
 // Never shows demo numbers — if the fetch fails the strip simply stays hidden.
