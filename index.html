@@ -304,6 +304,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--cream);colo
 .cc-nav-link{font-size:12px;font-weight:500;padding:5px 16px;border-radius:6px;color:rgba(255,255,255,.45);text-decoration:none;transition:all .2s;white-space:nowrap;}
 .cc-nav-link:hover{color:rgba(255,255,255,.8);background:rgba(255,255,255,.07);}
 .cc-nav-link.active{color:var(--white);background:rgba(255,255,255,.13);}
+.cc-nav-brand{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--gold,#C8963E);margin-right:12px;white-space:nowrap;}
 
 /* FRIDAY INVOICE BANNER */
 .friday-banner{
@@ -537,10 +538,13 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
 
 
 <nav class="cc-nav">
-  <a class="cc-nav-link active" href="./index.html">Morning Brief</a>
-  <a class="cc-nav-link" href="./processes.html">Process Library</a>
-  <a class="cc-nav-link" href="./winback.html">Win-back Scanner</a>
-  <a class="cc-nav-link" href="./drafts.html">Draft Engine</a>
+  <span class="cc-nav-brand">ERIDION HQ</span>
+  <a class="cc-nav-link active" href="./index.html">☀ Today</a>
+  <a class="cc-nav-link" href="https://erikagonzalez103-hash.github.io/order-tracker/">💼 Jobs</a>
+  <a class="cc-nav-link" href="https://erikagonzalez103-hash.github.io/eridion-ledger/">💰 Money</a>
+  <a class="cc-nav-link" href="https://erikagonzalez103-hash.github.io/crm/">📈 Grow</a>
+  <a class="cc-nav-link" href="https://erikagonzalez103-hash.github.io/eridion-snapshot/">📊 Snapshot</a>
+  <a class="cc-nav-link" href="./processes.html">Processes</a>
   <a class="cc-nav-link" href="./francisco.html">💬 Francisco</a>
 </nav>
 <div class="modebar">
@@ -598,6 +602,13 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
 
   <div id="francisco-activity-panel" style="display:none;margin:16px 0"></div>
   <div id="friday-banner" style="display:none"></div>
+
+  <!-- Live vendor-payments-due strip — fed by /orders/due-report (real Order Tracker data, no demo fallback) -->
+  <div id="orders-due-strip" style="display:none;margin:16px 0;padding:12px 18px;border-radius:10px;background:#FAF3E8;border:1px solid #D9B77C;color:#6B4E12;font-size:13px;line-height:1.5">
+    💼 <strong>Vendor payments:</strong>
+    <span id="ods-text"></span>
+    &nbsp;<a href="https://erikagonzalez103-hash.github.io/order-tracker/" style="color:#8A6A1F;font-weight:600">Open Jobs →</a>
+  </div>
   <div class="stats">
     <div class="stat urgent" onclick="scroll2('priority-section')"><div class="stat-num is-red" id="s-priority">—</div><div class="stat-label">Act today</div></div>
     <div class="stat warn" onclick="scroll2('stale-section')"><div class="stat-num is-amber" id="s-stale">—</div><div class="stat-label">Stale &gt;24h</div></div>
@@ -3671,7 +3682,27 @@ async function dismissPendingAction(id, btn) {
 // Load on page load + after each sync
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(loadFranciscoActivity, 1500);
+  loadOrdersDueStrip();
 });
+
+// Live vendor-payments-due strip: real Order Tracker data via /orders/due-report.
+// Never shows demo numbers — if the fetch fails the strip simply stays hidden.
+async function loadOrdersDueStrip() {
+  try {
+    const res = await fetch(`${WORKER}/orders/due-report`);
+    if (!res.ok) return;
+    const d = await res.json();
+    const s = d && d.summary;
+    if (!s || (!s.overdue_count && !s.due_this_week_count)) return;
+    const fmt$ = n => '$' + Math.round(n || 0).toLocaleString();
+    const parts = [];
+    if (s.overdue_count) parts.push(`<strong style="color:#A03A2A">${s.overdue_count} overdue (${fmt$(s.overdue_amount)})</strong>`);
+    if (s.due_this_week_count) parts.push(`${s.due_this_week_count} due this week (${fmt$(s.due_this_week_amount)})`);
+    if (s.due_next_week_count) parts.push(`${s.due_next_week_count} due next week (${fmt$(s.due_next_week_amount)})`);
+    document.getElementById('ods-text').innerHTML = parts.join(' · ');
+    document.getElementById('orders-due-strip').style.display = 'block';
+  } catch (e) { /* offline — strip stays hidden */ }
+}
 
 
 async function smartFileEmail(emailId, btn, event) {
