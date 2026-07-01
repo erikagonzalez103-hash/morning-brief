@@ -743,6 +743,7 @@ let mode='standard',lastData=null;
 // Email data cache — avoids escaping issues in onclick attributes
 let _emailCache = [];
 var _pendingMondayEmail = null; // stores email data for filing after Monday creation
+var _pendingMondayPdf = null; // stores {name, contentBytes} of the Work Order PDF to attach to the Monday job
 function cacheEmail(item) {
   const idx = _emailCache.length;
   _emailCache.push({
@@ -1299,7 +1300,7 @@ async function draftCheckin(contactName, actionId, event) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 300,
         messages: [{
           role: 'user',
@@ -3384,7 +3385,7 @@ async function draftReply(cacheIdx, event) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 400,
         messages: [{
           role: 'user',
@@ -3991,7 +3992,7 @@ ${fullBody}`
     const aiRes = await fetch(`${WORKER_URL}/api/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: messages })
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: messages })
     });
     const aiData = await aiRes.json();
     const raw = (aiData.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
@@ -3999,6 +4000,10 @@ ${fullBody}`
     try { parsed = JSON.parse(raw); } catch(pe) {}
 
     // ── Step 4: Show preview modal ──
+    // Stash the PDF so it can be attached to the Monday item after creation.
+    _pendingMondayPdf = (pdfData && pdfData.contentBytes)
+      ? { name: pdfData.name || 'work-order.pdf', contentBytes: pdfData.contentBytes }
+      : null;
     btn.textContent = 'Review...';
     showMondayPreview(parsed, e, pdfData ? pdfData.name : null, btn);
 
@@ -4099,6 +4104,11 @@ async function extractMondayPDF(fileInput) {
       r.readAsDataURL(file);
     });
 
+    // Stash the uploaded file so it attaches to the Monday item even if AI extraction fails.
+    if (file.type === 'application/pdf') {
+      _pendingMondayPdf = { name: file.name || 'work-order.pdf', contentBytes: base64 };
+    }
+
     var mediaType = file.type || 'application/pdf';
     var isPdf = file.type === 'application/pdf';
     var content = isPdf
@@ -4110,7 +4120,7 @@ async function extractMondayPDF(fileInput) {
     var res = await fetch(`${WORKER_URL}/api/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: content }] })
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: content }] })
     });
     var data = await res.json();
     var raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
@@ -4172,6 +4182,9 @@ async function confirmMondayCreate(btn) {
         pmEmail: pmEmail,
         measurer: measurer,
         measurerEmail: measurerEmail,
+        // Attach the source Work Order PDF into the Monday "Work Order/Measurements" file column.
+        pdfName: (_pendingMondayPdf && _pendingMondayPdf.name) || '',
+        pdfBase64: (_pendingMondayPdf && _pendingMondayPdf.contentBytes) || '',
       })
     });
     var data = await res.json();
@@ -4198,9 +4211,13 @@ async function confirmMondayCreate(btn) {
         }
       } catch(fe) { console.log('Thread filing failed:', fe); }
 
+      var pdfWasSent = !!(_pendingMondayPdf && _pendingMondayPdf.contentBytes);
       _pendingMondayEmail = null;
+      _pendingMondayPdf = null;
       btn.closest('div[style*="fixed"]').remove();
-      var successMsg = '✓ Created + ' + (fileCount > 0 ? fileCount + ' emails filed!' : 'Filed!');
+      // Only report attach status if the worker actually handled it (has the field).
+      var attachNote = (pdfWasSent && ('fileAttached' in data)) ? (data.fileAttached ? ' + WO attached' : ' (WO attach failed)') : '';
+      var successMsg = '✓ Created' + attachNote + ' + ' + (fileCount > 0 ? fileCount + ' emails filed!' : 'Filed!');
       document.querySelectorAll('.act-btn').forEach(function(b) {
         if (b.textContent === 'Review...' || b.textContent === 'Filing emails...' || b.textContent === 'Filing email...') {
           b.textContent = successMsg;
@@ -4422,7 +4439,7 @@ async function suggestPriority(task, from, subject, preview) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 150,
         messages: [{
           role: 'user',
