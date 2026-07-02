@@ -625,6 +625,21 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     </table>
     <div id="ccal-note" style="font-size:11px;color:#aaa;margin-top:8px"></div>
   </div>
+
+  <!-- Weekly KPIs — defend the floor / grow the top (PE plan §8), fed by /kpi/weekly -->
+  <div id="kpi-strip" style="display:none;margin:16px 0;padding:16px 18px;border-radius:10px;background:#fff;border:1px solid #E3E6EA">
+    <div style="font-size:13px;font-weight:700;color:#0D1B2A;margin-bottom:10px">📊 This week's numbers</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:#999;text-transform:uppercase;margin-bottom:6px">Defend the floor</div>
+        <div id="kpi-defend" style="font-size:12px;line-height:1.9;color:#333"></div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:#999;text-transform:uppercase;margin-bottom:6px">Grow the top</div>
+        <div id="kpi-grow" style="font-size:12px;line-height:1.9;color:#333"></div>
+      </div>
+    </div>
+  </div>
   <div class="stats">
     <div class="stat urgent" onclick="scroll2('priority-section')"><div class="stat-num is-red" id="s-priority">—</div><div class="stat-label">Act today</div></div>
     <div class="stat warn" onclick="scroll2('stale-section')"><div class="stat-num is-amber" id="s-stale">—</div><div class="stat-label">Stale &gt;24h</div></div>
@@ -3700,7 +3715,40 @@ document.addEventListener('DOMContentLoaded', () => {
   setTimeout(loadFranciscoActivity, 1500);
   loadOrdersDueStrip();
   loadCashCalendar();
+  loadKpiStrip();
 });
+
+// Weekly KPI strip — /kpi/weekly (defend the floor / grow the top).
+async function loadKpiStrip() {
+  try {
+    const res = await fetch(`${WORKER}/kpi/weekly`);
+    if (!res.ok) return;
+    const k = await res.json();
+    if (!k || !k.defend) return;
+    const fmt$ = n => '$' + Math.round(n || 0).toLocaleString();
+    const d = k.defend;
+    const dRows = [];
+    dRows.push('Cash: <strong>' + (d.cash != null ? fmt$(d.cash) : 'reconnect Xero') + '</strong>');
+    if (d.apBacklog != null) dRows.push('Past-due payables: <strong style="color:#A03A2A">' + fmt$(d.apBacklog) + '</strong>');
+    if (d.arOverdueRatio != null) dRows.push('AR overdue ratio: <strong>' + d.arOverdueRatio + '%</strong> <span style="color:#999">(target &lt;40%)</span>');
+    if (d.staleARFlagged && d.staleARFlagged.count) dRows.push('Ghost invoices flagged: ' + d.staleARFlagged.count + ' (' + fmt$(d.staleARFlagged.amount) + ') — bookkeeper');
+    if (d.top5RevenueMTD && d.top5RevenueMTD.length) dRows.push('Top builders MTD: ' + d.top5RevenueMTD.slice(0, 3).map(b => b.name.split(' ')[0] + ' ' + fmt$(b.amount)).join(' · '));
+    document.getElementById('kpi-defend').innerHTML = dRows.map(r => '<div>' + r + '</div>').join('');
+    const g = k.grow;
+    const gRows = [];
+    if (g && g.available) {
+      const nc = Object.entries(g.newContacts7d || {});
+      gRows.push('New contacts (7d): <strong>' + (nc.reduce((s, [, n]) => s + n, 0)) + '</strong>' + (nc.length ? ' <span style="color:#999">(' + nc.map(([l, n]) => l + ' ' + n).join(', ') + ')</span>' : ''));
+      const t = Object.entries(g.touches7d || {});
+      gRows.push('Touches sent (7d): <strong>' + t.reduce((s, [, n]) => s + n, 0) + '</strong>' + (t.length ? ' <span style="color:#999">(' + t.map(([c, n]) => c + ' ' + n).join(', ') + ')</span>' : ''));
+      gRows.push('Outreach due today: <strong>' + (g.outreachDueToday || 0) + '</strong> — <a href="https://erikagonzalez103-hash.github.io/crm/">work the queue</a>');
+    } else {
+      gRows.push('<span style="color:#999">Open the CRM once to sync contacts — growth numbers light up automatically.</span>');
+    }
+    document.getElementById('kpi-grow').innerHTML = gRows.map(r => '<div>' + r + '</div>').join('');
+    document.getElementById('kpi-strip').style.display = 'block';
+  } catch (e) { /* offline — strip stays hidden */ }
+}
 
 // 8-week Cash Calendar panel — /cashflow/projection joins Xero cash + AR,
 // Ledger bills/forecasts, and Order Tracker due dates server-side.

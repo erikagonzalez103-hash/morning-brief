@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "snapshot",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8099", "--directory", "../eridion-snapshot"],
+      "port": 8099
+    },
+    {
+      "name": "scopekit",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8321", "--directory", "../scopekit"],
+      "port": 8321
+    },
+    {
+      "name": "ledger",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8791", "--directory", "../eridion-ledger"],
+      "port": 8791
+    },
+    {
+      "name": "tracker",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8792", "--directory", "../order-tracker"],
+      "port": 8792
+    },
+    {
+      "name": "brief",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8793", "--directory", "."],
+      "port": 8793
+    },
+    {
+      "name": "crm",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8794", "--directory", "../crm"],
+      "port": 8794
+    }
+  ]
+}
