@@ -825,6 +825,79 @@ function set(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function initials(n){return (n||'?').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase();}
 
+// ═══ HARDENED CLAUDE CALL — timeout, retries, real error surfacing ═══
+// The worker proxies Anthropic verbatim: always HTTP 200 with the API's JSON
+// (errors arrive as {error:{type,message}}), or {error:'API proxy failed: …'}
+// (a string) when the worker itself fails. Transient conditions — rate limit,
+// overload, network blips, timeouts, HTML error pages — are retried with
+// backoff. Permanent ones (bad key, invalid request) fail immediately.
+const TRANSIENT_API_ERRORS = ['rate_limit_error', 'overloaded_error', 'api_error', 'timeout_error'];
+
+async function callClaude(body, onStatus, retries) {
+  if (retries === undefined) retries = 2;
+  var lastErr = '';
+  for (var attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      var waitS = attempt === 1 ? 5 : 20;
+      if (onStatus) onStatus('AI busy (' + lastErr + ') — retrying in ' + waitS + 's, attempt ' + (attempt + 1) + ' of ' + (retries + 1) + '…');
+      await new Promise(function(r) { setTimeout(r, waitS * 1000); });
+      if (onStatus) onStatus('Retrying…');
+    }
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = controller ? setTimeout(function() { controller.abort(); }, 120000) : null;
+    try {
+      var response = await fetch(WORKER_URL + '/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller ? controller.signal : undefined
+      });
+      if (timer) clearTimeout(timer);
+      var rawText = await response.text();
+      var apiResp;
+      try { apiResp = JSON.parse(rawText); }
+      catch (e) { lastErr = 'service returned a non-JSON page (HTTP ' + response.status + ')'; continue; }
+      var errObj = apiResp && apiResp.error;
+      if (errObj) {
+        var etype = typeof errObj === 'object' ? (errObj.type || '') : '';
+        var emsg = typeof errObj === 'object' ? (errObj.message || 'API error') : String(errObj);
+        if (TRANSIENT_API_ERRORS.indexOf(etype) !== -1 || typeof errObj === 'string' || response.status >= 500) {
+          lastErr = etype ? etype.replace(/_/g, ' ') : emsg;
+          continue;
+        }
+        var friendly = etype === 'authentication_error'
+          ? 'the worker’s Anthropic API key was rejected — check ANTHROPIC_API_KEY on the worker'
+          : emsg;
+        var permErr = new Error(friendly);
+        permErr.permanent = true;
+        throw permErr;
+      }
+      return apiResp;
+    } catch (err) {
+      if (timer) clearTimeout(timer);
+      if (err.permanent) throw err;
+      if (err && err.name === 'AbortError') { lastErr = 'timed out after 2 minutes'; continue; }
+      lastErr = 'network error — worker unreachable';
+      continue;
+    }
+  }
+  throw new Error('gave up after ' + (retries + 1) + ' attempts — last problem: ' + lastErr + '. This is usually a temporary rate limit; wait a minute and try again.');
+}
+
+// Pull the first JSON object out of the model's reply (tolerates ```json fences).
+function extractJSONFromResponse(apiResp) {
+  var textContent = (apiResp.content || []).filter(function(b) { return b.type === 'text'; }).map(function(b) { return b.text; }).join('');
+  textContent = textContent.replace(/```json|```/g, '');
+  var braceStart = textContent.indexOf('{');
+  if (braceStart === -1) throw new Error('the AI reply contained no JSON — try again');
+  var depth = 0, end = -1;
+  for (var i = braceStart; i < textContent.length; i++) {
+    if (textContent[i] === '{') depth++;
+    else if (textContent[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  return JSON.parse(end !== -1 ? textContent.substring(braceStart, end + 1) : textContent.substring(braceStart));
+}
+
 function setMode(m,btn){
   mode=m;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
@@ -1347,19 +1420,14 @@ async function draftCheckin(contactName, actionId, event) {
   btn.disabled = true;
   
   try {
-    const res = await fetch(`${WORKER_URL}/api/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 300,
-        messages: [{
-          role: 'user',
-          content: `Write a short, casual, friendly check-in email from Erika at Eridion Glass to ${contactName}. We have worked with them recently and just haven't heard from them in a while. Keep it simple and human — like a text from a colleague. Example: "Hi [name], just checking in! We haven't heard from you in a while and wanted to see if you have any new projects coming up. Would love to work together again soon!" 3-4 sentences max. Subject line then body. Start with "Hi [first name]," — casual, no formality. Do NOT describe Eridion Glass services — they already know us.`
-        }]
-      })
-    });
-    const data = await res.json();
+    const data = await callClaude({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 300,
+      messages: [{
+        role: 'user',
+        content: `Write a short, casual, friendly check-in email from Erika at Eridion Glass to ${contactName}. We have worked with them recently and just haven't heard from them in a while. Keep it simple and human — like a text from a colleague. Example: "Hi [name], just checking in! We haven't heard from you in a while and wanted to see if you have any new projects coming up. Would love to work together again soon!" 3-4 sentences max. Subject line then body. Start with "Hi [first name]," — casual, no formality. Do NOT describe Eridion Glass services — they already know us.`
+      }]
+    }, msg => { btn.textContent = msg; });
     const draft = data.content?.[0]?.text || 'Could not generate draft';
     
     const overlay = document.createElement('div');
@@ -3427,15 +3495,12 @@ async function draftReply(cacheIdx, event) {
   overlay.innerHTML = `
     <div style="background:white;border-radius:12px;padding:24px;max-width:540px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.2)">
       <div style="font-size:14px;font-weight:600;color:var(--navy);margin-bottom:12px">✍ Drafting reply to ${esc(e.from)}...</div>
-      <div style="text-align:center;padding:20px"><div class="spinner"></div><div style="font-size:12px;color:var(--text-3);margin-top:8px">Claude is writing a reply...</div></div>
+      <div style="text-align:center;padding:20px"><div class="spinner"></div><div id="draft-reply-status" style="font-size:12px;color:var(--text-3);margin-top:8px">Claude is writing a reply...</div></div>
     </div>`;
   document.body.appendChild(overlay);
 
   try {
-    const res = await fetch(`${WORKER_URL}/api/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const data = await callClaude({
         model: 'claude-sonnet-4-6',
         max_tokens: 400,
         messages: [{
@@ -3457,9 +3522,7 @@ If it's informational/newsletter: write a brief acknowledgment.
 
 Write ONLY the email body. Start with "Hi [first name]," — no subject line.`
         }]
-      })
-    });
-    const data = await res.json();
+      }, msg => { const s = document.getElementById('draft-reply-status'); if (s) s.textContent = msg; });
     const draft = data.content?.[0]?.text || 'Could not generate draft';
 
     overlay.innerHTML = `
@@ -4144,15 +4207,13 @@ ${fullBody}`
       }];
     }
 
-    const aiRes = await fetch(`${WORKER_URL}/api/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: messages })
-    });
-    const aiData = await aiRes.json();
-    const raw = (aiData.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+    const aiData = await callClaude(
+      { model: 'claude-sonnet-4-6', max_tokens: 300, messages: messages },
+      msg => { btn.textContent = msg; }
+    );
+    // Empty parse still opens the preview modal so fields can be filled manually.
     let parsed = {};
-    try { parsed = JSON.parse(raw); } catch(pe) {}
+    try { parsed = extractJSONFromResponse(aiData); } catch(pe) {}
 
     // ── Step 4: Show preview modal ──
     // Stash the PDF so it can be attached to the Monday item after creation.
@@ -4166,6 +4227,7 @@ ${fullBody}`
     btn.textContent = 'Error — try again';
     btn.disabled = false;
     console.error('Monday create error:', err);
+    alert('Could not extract job details: ' + err.message);
   }
 }
 
@@ -4272,15 +4334,11 @@ async function extractMondayPDF(fileInput) {
       : [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
          { type: 'text', text: 'Extract job details from this Eridion Glass Work Order. Return ONLY JSON: {"address":"Customer Ref / job address","builder":"client name from For: field","internalJob":"Work Order number","scope":"description of work","amount":0,"po":"client PO number","installDate":"YYYY-MM-DD from Required By","poDate":"YYYY-MM-DD from Date"}' }];
 
-    var res = await fetch(`${WORKER_URL}/api/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: content }] })
-    });
-    var data = await res.json();
-    var raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
-    var parsed = {};
-    try { parsed = JSON.parse(raw); } catch(pe) {}
+    var data = await callClaude(
+      { model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: content }] },
+      function(msg) { status.textContent = msg; }
+    );
+    var parsed = extractJSONFromResponse(data);
 
     // Fill in the form fields
     if (parsed.address) document.getElementById('mj-address').value = parsed.address;
@@ -4294,7 +4352,7 @@ async function extractMondayPDF(fileInput) {
     status.textContent = '✓ Extracted from ' + file.name;
     status.style.color = 'var(--green)';
   } catch(err) {
-    status.textContent = 'Could not extract — fill in manually';
+    status.textContent = 'Could not extract (' + err.message + ') — fill in manually';
     status.style.color = 'var(--red)';
     console.error(err);
   }
@@ -4590,10 +4648,7 @@ async function suggestPriority(task, from, subject, preview) {
   </div>`;
 
   try {
-    const res = await fetch(`${WORKER_URL}/api/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const data = await callClaude({
         model: 'claude-sonnet-4-6',
         max_tokens: 150,
         messages: [{
@@ -4613,11 +4668,12 @@ Priority guide:
 - p2: needs attention this week, follow-ups, scheduling, POs to process
 - p3: informational, FYI, can wait, low urgency updates`
         }]
-      })
-    });
-    const data = await res.json();
-    const raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
-    const suggestion = JSON.parse(raw);
+      }, msg => {
+        area.innerHTML = `<div class="ai-suggest-bar">
+          <div class="ai-suggest-text"><strong>🤖 Analyzing: ${esc(subject).slice(0,50)}...</strong>${esc(msg)}</div>
+        </div>`;
+      }, 1); // runs automatically after adding a task — keep retries short
+    const suggestion = extractJSONFromResponse(data);
 
     // Store suggestion safely in JS variable (avoids escaping issues in onclick)
     pendingSuggestion = { taskId: task.id, priority: suggestion.priority, action: suggestion.action };
@@ -4639,7 +4695,7 @@ Priority guide:
     console.error('AI suggest failed:', e);
     pendingSuggestion = { taskId: task.id, priority: 'p2', action: '' };
     area.innerHTML = `<div class="ai-suggest-bar">
-      <div class="ai-suggest-text"><strong>Could not reach AI</strong> — set priority manually</div>
+      <div class="ai-suggest-text"><strong>Could not reach AI</strong> — ${esc(e.message)} — set priority manually</div>
       <div class="ai-suggest-actions">
         <button class="ai-sug-btn p1-btn" onclick="applySuggestion('p1')">P1</button>
         <button class="ai-sug-btn p2-btn" onclick="applySuggestion('p2')">P2</button>
