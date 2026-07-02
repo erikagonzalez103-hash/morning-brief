@@ -626,6 +626,15 @@ body:not(.sidebar-open) .main{transition:margin-right .25s cubic-bezier(.4,0,.2,
     <div id="ccal-note" style="font-size:11px;color:#aaa;margin-top:8px"></div>
   </div>
 
+  <!-- Deal-flow radar — new DFW commercial filings from TDLR TABS, fed by /radar/leads -->
+  <div id="radar-panel" style="display:none;margin:16px 0;padding:16px 18px;border-radius:10px;background:#fff;border:1px solid #E3E6EA">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:700;color:#0D1B2A">📡 Deal-flow radar — new commercial filings</div>
+      <div style="font-size:11px;color:#999" id="radar-meta"></div>
+    </div>
+    <div id="radar-rows" style="font-size:12px;line-height:1.6;color:#333"></div>
+  </div>
+
   <!-- Weekly KPIs — defend the floor / grow the top (PE plan §8), fed by /kpi/weekly -->
   <div id="kpi-strip" style="display:none;margin:16px 0;padding:16px 18px;border-radius:10px;background:#fff;border:1px solid #E3E6EA">
     <div style="font-size:13px;font-weight:700;color:#0D1B2A;margin-bottom:10px">📊 This week's numbers</div>
@@ -3716,7 +3725,28 @@ document.addEventListener('DOMContentLoaded', () => {
   loadOrdersDueStrip();
   loadCashCalendar();
   loadKpiStrip();
+  loadRadarPanel();
 });
+
+// Deal-flow radar — new TABS commercial filings in DFW (nightly sweep).
+async function loadRadarPanel() {
+  try {
+    const res = await fetch(`${WORKER}/radar/leads`);
+    if (!res.ok) return;
+    const r = await res.json();
+    if (!r || !Array.isArray(r.leads) || !r.leads.length) return;
+    const fmt$ = n => '$' + Math.round(n || 0).toLocaleString();
+    document.getElementById('radar-meta').textContent = r.newCount + ' new ≥ ' + fmt$(r.minCost) + ' · ' + (r.counties || []).join(', ');
+    document.getElementById('radar-rows').innerHTML = r.leads.slice(0, 6).map(l =>
+      `<div style="padding:7px 0;border-top:1px solid #F0F2F4">
+        <strong>${l.name || l.facility}</strong> · ${l.county} · ${fmt$(l.cost)} · ${l.workType}
+        ${l.designFirm ? `<div style="color:#666;font-size:11px">Architect: ${l.designFirm}${l.newArchitect ? ' <strong style="color:#0F6E56">NEW TO YOU</strong>' : ''}${l.designFirmPhone ? ' · ' + l.designFirmPhone : ''}${l.owner ? ' · Owner: ' + l.owner : ''}</div>` : ''}
+        ${l.scope ? `<div style="color:#999;font-size:11px">${String(l.scope).slice(0, 130)}…</div>` : ''}
+        <a href="${l.url}" style="font-size:11px">TABS filing →</a>
+      </div>`).join('');
+    document.getElementById('radar-panel').style.display = 'block';
+  } catch (e) { /* offline — panel stays hidden */ }
+}
 
 // Weekly KPI strip — /kpi/weekly (defend the floor / grow the top).
 async function loadKpiStrip() {
