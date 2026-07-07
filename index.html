@@ -3798,18 +3798,100 @@ async function loadRadarPanel() {
     if (!res.ok) return;
     const r = await res.json();
     if (!r || !Array.isArray(r.leads) || !r.leads.length) return;
-    const fmt$ = n => '$' + Math.round(n || 0).toLocaleString();
-    document.getElementById('radar-meta').textContent = r.newCount + ' new ≥ ' + fmt$(r.minCost) + ' · ' + (r.counties || []).join(', ');
-    document.getElementById('radar-rows').innerHTML = r.leads.slice(0, 6).map(l =>
-      `<div style="padding:7px 0;border-top:1px solid #F0F2F4">
+    // Cache the live payload so triage clicks can re-render without re-fetching.
+    window._radarLeads = r.leads;
+    window._radarMeta = r;
+    renderRadar(r.leads, r);
+    document.getElementById('radar-panel').style.display = 'block';
+  } catch (e) { /* offline — panel stays hidden */ }
+}
+
+/* radar-triage:start
+   Turns the read-only deal-flow radar into an actionable outreach queue.
+   Erika can mark a filing "Reached out" (sinks + dims, so she stops re-reading
+   it every morning) or "Skip" (hidden). State lives in shared-origin
+   localStorage under eridion:radar:triage — the same cross-app bus the Ledger
+   forecast sync uses — so the CRM and other Eridion apps can read it later.
+   No worker endpoint required: this is live the moment it ships. */
+const RADAR_TRIAGE_KEY = 'eridion:radar:triage';
+
+// Stable identity for a lead across nightly sweeps. Prefer an explicit id;
+// fall back to the filing URL, then to a name+county+cost fingerprint.
+function radarLeadKey(l) {
+  if (!l) return '';
+  return String(l.id || l.permitNum || l.url ||
+    ((l.name || l.facility || '') + '|' + (l.county || '') + '|' + (l.cost || '')));
+}
+
+// Read the triage store, garbage-collecting entries older than 90 days so it
+// can never grow without bound (mirrors the Francisco dismiss-log GC).
+function loadRadarTriage() {
+  try {
+    const store = JSON.parse(localStorage.getItem(RADAR_TRIAGE_KEY) || '{}');
+    const cutoff = Date.now() - 90 * 864e5;
+    let changed = false;
+    for (const k of Object.keys(store)) {
+      if (!store[k] || (store[k].ts && store[k].ts < cutoff)) { delete store[k]; changed = true; }
+    }
+    if (changed) localStorage.setItem(RADAR_TRIAGE_KEY, JSON.stringify(store));
+    return store;
+  } catch (e) { return {}; }
+}
+
+// key arrives URL-encoded from the onclick attribute (safe embedding), so decode.
+function markRadarLead(encodedKey, status) {
+  const key = decodeURIComponent(encodedKey);
+  const store = loadRadarTriage();
+  if (status === 'clear') delete store[key];
+  else store[key] = { status, ts: Date.now() };
+  try { localStorage.setItem(RADAR_TRIAGE_KEY, JSON.stringify(store)); } catch (e) {}
+  renderRadar(window._radarLeads || [], window._radarMeta || {});
+}
+
+function renderRadar(leads, meta) {
+  meta = meta || {};
+  const store = loadRadarTriage();
+  const fmt$ = n => '$' + Math.round(n || 0).toLocaleString();
+
+  // Attach triage state, drop skipped leads, and order the rest:
+  // fresh new-to-you architects first, then other fresh leads, reached-out last.
+  const enriched = leads
+    .map(l => { const key = radarLeadKey(l); return { l, key, t: store[key] }; })
+    .filter(x => !(x.t && x.t.status === 'skip'));
+  const rank = x => (x.t && x.t.status === 'reached') ? 2 : (x.l.newArchitect ? 0 : 1);
+  enriched.sort((a, b) => rank(a) - rank(b));
+
+  const reachedCount = Object.values(store).filter(v => v && v.status === 'reached').length;
+  const metaEl = document.getElementById('radar-meta');
+  if (metaEl) {
+    const base = (meta.newCount != null ? meta.newCount + ' new ≥ ' + fmt$(meta.minCost) : '') +
+      ((meta.counties && meta.counties.length) ? ' · ' + meta.counties.join(', ') : '');
+    metaEl.textContent = base + (reachedCount ? ' · ' + reachedCount + ' reached out' : '');
+  }
+
+  const rowsEl = document.getElementById('radar-rows');
+  if (!rowsEl) return;
+  const btnBase = 'font-size:11px;font-weight:600;padding:2px 9px;border-radius:5px;cursor:pointer';
+  rowsEl.innerHTML = enriched.slice(0, 8).map(x => {
+    const l = x.l;
+    const reached = x.t && x.t.status === 'reached';
+    // encodeURIComponent leaves ' unescaped, which would break out of the
+    // single-quoted onclick string — escape it so the token is inert.
+    const kq = encodeURIComponent(x.key).replace(/'/g, '%27');
+    const actions = reached
+      ? `<button onclick="markRadarLead('${kq}','clear')" style="${btnBase};border:1px solid #D0D5DA;background:#fff;color:#888">✓ Reached out — undo</button>`
+      : `<button onclick="markRadarLead('${kq}','reached')" style="${btnBase};border:1px solid #0F6E56;background:#0F6E56;color:#fff">✓ Reached out</button>
+         <button onclick="markRadarLead('${kq}','skip')" style="${btnBase};border:1px solid #D0D5DA;background:#fff;color:#888">✕ Skip</button>`;
+    return `<div style="padding:7px 0;border-top:1px solid #F0F2F4;${reached ? 'opacity:.55;' : ''}">
         <strong>${l.name || l.facility}</strong> · ${l.county} · ${fmt$(l.cost)} · ${l.workType}
         ${l.designFirm ? `<div style="color:#666;font-size:11px">Architect: ${l.designFirm}${l.newArchitect ? ' <strong style="color:#0F6E56">NEW TO YOU</strong>' : ''}${l.designFirmPhone ? ' · ' + l.designFirmPhone : ''}${l.owner ? ' · Owner: ' + l.owner : ''}</div>` : ''}
         ${l.scope ? `<div style="color:#999;font-size:11px">${String(l.scope).slice(0, 130)}…</div>` : ''}
         <a href="${l.url}" style="font-size:11px">TABS filing →</a>
-      </div>`).join('');
-    document.getElementById('radar-panel').style.display = 'block';
-  } catch (e) { /* offline — panel stays hidden */ }
+        <div style="margin-top:5px;display:flex;gap:6px">${actions}</div>
+      </div>`;
+  }).join('');
 }
+/* radar-triage:end */
 
 // Weekly KPI strip — /kpi/weekly (defend the floor / grow the top).
 async function loadKpiStrip() {
